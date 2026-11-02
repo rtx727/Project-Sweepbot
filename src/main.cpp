@@ -22,6 +22,7 @@ distance DISTANCE(PORT1);
 motor_group motors(RM, LM);
 controller CONTROLLER;
 inertial BrainInertial = inertial();
+touchled TOUCHLED(PORT4);
 
 //Structs
 
@@ -126,15 +127,43 @@ void testPIDTurning(){
 }
 
 
+//Event functions
+void endAutonomous(){
+    end_autonomous = true;
+    TOUCHLED.setColor(color::red);
+    motors.stop(brake);
+    Brain.Screen.clearScreen();
+    Brain.Screen.setCursor(1,1);
+    Brain.Screen.print("End Auto");
+
+}
+
+
+//Button functions
+void handle_TOUCLED(){
+    if (TOUCLED_COLOR == color::red){
+        endAutonomous();
+    }
+}
+
+
+
+//Global variables -------------------------------------------------------------------------------
+bool end_autonomous = false;
+color TOUCLED_COLOR = color::green;
 
 
 
 // -------------------------------------- MAIN ---------------------------------------------------
-
 int main() {
     //Calibration
 	calibrateSensors();
     Brain.Screen.printAt( 2, 30, "Hello IQ2" );
+    Brain.Screen.clearScreen();
+
+    //Setup events
+    TOUCHLED.pressed(handle_TOUCLED);
+    TOUCHLED.setColor(color::red); //Start autonomous program
 
     //Tests
     testPIDTurning();
@@ -176,7 +205,7 @@ void turnHeading(float targetHeading){
     PIDcontroller turnPID = PIDcontroller(Kp, Ki, Kd);
 
     //Perform movement until error is acceptable
-    while(abs(error) > acceptableError){
+    while(abs(error) > acceptableError && !end_autonomous){
         //continuously find current heading and error
         currentHeading = BrainInertial.rotation(degrees);
         error = targetHeading - currentHeading;
