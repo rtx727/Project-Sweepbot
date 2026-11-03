@@ -128,7 +128,7 @@ void testPIDTurning(){
 
 
 //Event functions
-void endAutonomous(){
+void endAutonomous(bool &end_autonomous){
     end_autonomous = true;
     TOUCHLED.setColor(color::red);
     motors.stop(brake);
@@ -140,29 +140,30 @@ void endAutonomous(){
 
 
 //Button functions
-void handle_TOUCLED(){
+void handle_TOUCLED(bool &end_autonomous, color &TOUCLED_COLOR){
     if (TOUCLED_COLOR == color::red){
-        endAutonomous();
+        endAutonomous(end_autonomous);
     }
 }
 
 
 
-//Global variables -------------------------------------------------------------------------------
-bool end_autonomous = false;
-color TOUCLED_COLOR = color::green;
-
 
 
 // -------------------------------------- MAIN ---------------------------------------------------
 int main() {
+    //bool end_autonomous = false;
+    color TOUCLED_COLOR = color::green;
+
+
+
     //Calibration
 	calibrateSensors();
     Brain.Screen.printAt( 2, 30, "Hello IQ2" );
     Brain.Screen.clearScreen();
 
     //Setup events
-    TOUCHLED.pressed(handle_TOUCLED);
+    //TOUCHLED.pressed(handle_TOUCLED,end_autonomous, TOUCLED_COLOR));
     TOUCHLED.setColor(color::red); //Start autonomous program
 
     //Tests
@@ -172,7 +173,7 @@ int main() {
 
 
     //End program
-    Brain.programStop();
+    //Brain.programStop();
 }
 
 //Function definitions
@@ -194,21 +195,25 @@ void turnHeading(float targetHeading){
     //Set current heading to 0;
     BrainInertial.resetRotation();
     float error = targetHeading; //Initial error is just heading
-    float acceptableError = 2; //degrees
+    float acceptableError = 0.25; //degrees
     float currentHeading = 0;
     float motorSpeed = 0; //In percentage
 
     //Construct PID controller object
-    float Kp = 0.2;
-    float Ki = 0.1;
-    float Kd = 0.0;
+    float Kp = 0.7;
+    float Ki = 0.00003;
+    float Kd = 0.8;
     PIDcontroller turnPID = PIDcontroller(Kp, Ki, Kd);
 
     //Perform movement until error is acceptable
-    while(abs(error) > acceptableError && !end_autonomous){
+    while(fabs(error) > acceptableError){
         //continuously find current heading and error
         currentHeading = BrainInertial.rotation(degrees);
         error = targetHeading - currentHeading;
+        Brain.Screen.setCursor(1,1);
+        Brain.Screen.print("%f", currentHeading);
+        Brain.Screen.setCursor(2,1);
+        Brain.Screen.print("%f", error);
 
         //Determine which direction to turn
         if (error > 0){ //right turn
