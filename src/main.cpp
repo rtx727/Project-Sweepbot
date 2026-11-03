@@ -83,6 +83,17 @@ struct PIDcontroller{
     }
 };
 
+
+//Struct for robot
+struct robot{
+    pose robot_pose;
+
+    //1=red, 2=green, 3=blue, 4=yellow
+    int LED_color;
+
+};
+
+
 //Struct to track robot position and heading
 struct pose{
     float x;
@@ -121,7 +132,7 @@ void turnHeading(float targetHeading);
 
 
 
-//Test functions
+//Test functions----------------------------------------------------------------------------------
 void testPIDTurning(){
     turnHeading(90);
 }
