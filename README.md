@@ -29,4 +29,9 @@ Program Task Assignments:
 - Matt: Edge detection
 - Riley: Trivial Functions (Driveforward, Backward, turnleft, turnright, PID for movement program)
 - Richard: Manual Controller program
-- Yunhao: PID controller
+- Yunhao: PID controller, find out how to stop 
+
+Edge detection MVP/ key targets:
+-Identify when the sensor has left the table surface, flag this in a boolean
+-Figure logic to determine 
+-Get two sensors to fall off edge at the exact same time to find absolute heading of robot relative to table
