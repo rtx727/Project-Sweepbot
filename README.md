@@ -26,7 +26,7 @@ Robot Building Task Assignments:
 - Yunhao: 3D printing parts TBD
 
 Program Task Assignments:
-- Matt: Edge detection
+- Matt: Edge detection, v-shape collector program
 - Riley: Trivial Functions (Driveforward, Backward, turnleft, turnright, PID for movement program)
-- Richard: Manual Controller program
-- Yunhao: PID controller
+- Richard: Manual Controller program, v-shape collector program
+- Yunhao: PID controller (rotation)
