@@ -30,3 +30,8 @@ Program Task Assignments:
 - Riley: Trivial Functions (Driveforward, Backward, turnleft, turnright, PID for movement program)
 - Richard: Manual Controller program
 - Yunhao: PID controller
+
+
+Edge detection logic:
+-Get two sensors to fall of table at exact same time to get absolute heading
+-perform this calibration multiple times throughout the cleaning process
