@@ -27,6 +27,7 @@ touchled TOUCHLED(PORT8);
 motor motor2(PORT2, true); //claw left
 motor motor5(PORT5, false); //claw right
 // Structs
+const double MAX_SPEED = 50.0;
 
 // Struct to hold PID controller values and perform calculations
 struct PIDcontroller
