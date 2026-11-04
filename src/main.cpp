@@ -18,13 +18,14 @@ vex::brain Brain;
 motor RM(PORT12, bool(reverse));
 motor LM(PORT7, bool(forward));
 bumper BUMPER(PORT3);
-distance DISTANCE(PORT1);
+distance DISTANCE(PORT1); //left side
 motor_group motors(RM, LM);
-optical OPTICAL(PORT4);
+optical OPTICAL(PORT6); //right side
 controller CONTROLLER;
 inertial BrainInertial = inertial();
-touchled TOUCHLED(PORT4);
-
+touchled TOUCHLED(PORT8);
+motor motor2(PORT2, true); //claw left
+motor motor5(PORT5, false); //claw right
 // Structs
 
 // Struct to hold PID controller values and perform calculations
