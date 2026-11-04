@@ -452,4 +452,61 @@ void controlClaw(motor &m, bool collect, bool release) {
         m.stop(hold);
     }
 }
+
+void Manual_Control() {
+    vexcodeInit();
+
+
+    motor2.stop(hold);
+    motor5.stop(hold);
+
+    motor2.resetPosition();
+    motor5.resetPosition();
+
+    while (true) {
+
+        double forwardInput = CONTROLLER.AxisA.position();
+        double turnInput = CONTROLLER.AxisB.position();
+
+        if (fabs(forwardInput) < 5) {
+            forwardInput = 0;
+        }
+        if (fabs(turnInput) < 5) {
+            turnInput = 0;
+        }
+
+        double leftSpeed = forwardInput + turnInput;
+        double rightSpeed = forwardInput - turnInput;
+
+
+        double largest = fabs(leftSpeed);
+        if (fabs(rightSpeed) > largest) {
+            largest = fabs(rightSpeed);
+        }
+
+        if (largest > 100) {
+            leftSpeed = leftSpeed / largest * 100;
+            rightSpeed = rightSpeed / largest * 100;
+        }
+
+
+        leftSpeed *= MAX_SPEED / 100.0;
+        rightSpeed *= MAX_SPEED / 100.0;
+
+        driveMotor(LM, leftSpeed);
+        driveMotor(RM, rightSpeed);
+
+
+        double clawInput = CONTROLLER.AxisC.position();
+
+        bool collect = clawInput < -20;
+        bool release = clawInput > 20;
+
+
+        controlClaw(motor2, collect, release);
+        controlClaw(motor5, collect, release);
+
+        wait(10, msec);
+    }
+}
 // Matt -------------------------------------------------------------------------------------------
