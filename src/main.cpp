@@ -18,14 +18,16 @@ vex::brain Brain;
 motor RM(PORT12, bool(reverse));
 motor LM(PORT7, bool(forward));
 bumper BUMPER(PORT3);
-distance DISTANCE(PORT1);
+distance DISTANCE(PORT1); //left side
 motor_group motors(RM, LM);
-optical OPTICAL(PORT6);
+optical OPTICAL(PORT4);
 controller CONTROLLER;
 inertial BrainInertial = inertial();
-touchled TOUCHLED(PORT4);
-
+touchled TOUCHLED(PORT8);
+motor motor2(PORT2, true); //claw left
+motor motor5(PORT5, false); //claw right
 // Structs
+const double MAX_SPEED = 50.0;
 
 // Struct to hold PID controller values and perform calculations
 struct PIDcontroller
@@ -411,5 +413,43 @@ void driveHeading(float velocity, float targetHeading)
 }
 
 // Richard ----------------------------------------------------------------------------------------
+void driveMotor(motor &m, double speed) { //mannual control
+    if (speed > MAX_SPEED) {
+        speed = MAX_SPEED;
+    } else if (speed < -MAX_SPEED) {
+        speed = -MAX_SPEED;
+    }
 
+    if (fabs(speed) < 3) {
+        m.stop(brake);
+    } else {
+        m.spin(forward, speed, percent);
+    }
+}
+
+void controlClaw(motor &m, bool collect, bool release) {
+    double position = m.position(degrees);
+    double speed = MAX_SPEED/3; 
+
+    if (collect && position < 120) {
+
+        if (120 - position < 20) {
+            speed = 5;
+        }
+
+        m.spin(forward, speed, percent);
+    }
+    else if (release && position > 0) {
+
+        if (position < 20) {
+            speed = 5;
+        }
+
+        m.spin(reverse, speed, percent);
+    }
+    else {
+
+        m.stop(hold);
+    }
+}
 // Matt -------------------------------------------------------------------------------------------
