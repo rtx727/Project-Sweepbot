@@ -376,5 +376,43 @@ void driveHeading(float velocity, float targetHeading)
 }
 
 // Richard ----------------------------------------------------------------------------------------
+void driveMotor(motor &m, double speed) { //mannual control
+    if (speed > MAX_SPEED) {
+        speed = MAX_SPEED;
+    } else if (speed < -MAX_SPEED) {
+        speed = -MAX_SPEED;
+    }
 
+    if (fabs(speed) < 3) {
+        m.stop(brake);
+    } else {
+        m.spin(forward, speed, percent);
+    }
+}
+
+void controlClaw(motor &m, bool collect, bool release) {
+    double position = m.position(degrees);
+    double speed = MAX_SPEED/3; 
+
+    if (collect && position < 120) {
+
+        if (120 - position < 20) {
+            speed = 5;
+        }
+
+        m.spin(forward, speed, percent);
+    }
+    else if (release && position > 0) {
+
+        if (position < 20) {
+            speed = 5;
+        }
+
+        m.spin(reverse, speed, percent);
+    }
+    else {
+
+        m.stop(hold);
+    }
+}
 // Matt -------------------------------------------------------------------------------------------
