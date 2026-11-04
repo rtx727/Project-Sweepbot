@@ -89,6 +89,26 @@ struct PIDcontroller
     }
 };
 
+// Struct to track robot position and heading
+struct pose
+{
+    float x;
+    float y;
+    float heading;
+
+    pose()
+    {
+        x = 0;
+        y = 0;
+        heading = 0;
+    }
+    ~pose()
+    {
+        // Destructor
+    }
+};
+
+
 // Struct for robot
 // Contains movement functions
 struct robot
@@ -114,24 +134,7 @@ struct robot
 
 };
 
-// Struct to track robot position and heading
-struct pose
-{
-    float x;
-    float y;
-    float heading;
 
-    pose()
-    {
-        x = 0;
-        y = 0;
-        heading = 0;
-    }
-    ~pose()
-    {
-        // Destructor
-    }
-};
 
 // Function decalarations
 
