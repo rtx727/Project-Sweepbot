@@ -135,7 +135,7 @@ struct pose
 
 // Function decalarations
 
-void turnHeading(float targetHeading);
+void turn_heading(float targetHeading);
 void find_absolute_heading();
 
 // Calibrate all sensors
@@ -146,10 +146,10 @@ void driveHeading(float velocity, float targetHeading);
 // Test functions----------------------------------------------------------------------------------
 void testPIDTurning()
 {
-    turnHeading(90);
+    turn_heading(90);
 }
 
-void testFindAbsoluteHeading()
+void test_find_absolute_heading()
 {
     find_absolute_heading();
 }
@@ -193,7 +193,7 @@ int main()
     TOUCHLED.setColor(color::red); // Start autonomous program
 
     // Tests
-    testFindAbsoluteHeading();
+    test_find_absolute_heading();
     //testPIDTurning();
 
     // End program
@@ -284,11 +284,11 @@ void find_absolute_heading()
             //Determine which sensor went over the edge first and turn in the same direction
             if (error > 0)
             { // right sensor went over first, turn right
-                turnHeading(turnAmount);
+                turn_heading(turnAmount);
             }
             else
             { // left sensor went over first, turn left
-                turnHeading(-(turnAmount));
+                turn_heading(-(turnAmount));
             }
         }
         else{
@@ -314,7 +314,7 @@ void find_absolute_heading()
 // Params: Heading (+ or -)
 // Purpose: Turns gyro sensor, assumes current heading is zero
 // Outputs: None
-void turnHeading(float targetHeading)
+void turn_heading(float targetHeading)
 {
     // Stop all motors
     motors.stop(brake);
