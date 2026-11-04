@@ -20,7 +20,7 @@ motor LM(PORT7, bool(forward));
 bumper BUMPER(PORT3);
 distance DISTANCE(PORT1);
 motor_group motors(RM, LM);
-optical OPTICAL(PORT4);
+optical OPTICAL(PORT6);
 controller CONTROLLER;
 inertial BrainInertial = inertial();
 touchled TOUCHLED(PORT4);
@@ -33,17 +33,19 @@ struct PIDcontroller
     float Kp;
     float Ki;
     float Kd;
+    float integralZone; //only apply Ki in this zone
     float error;
     float previousError;
     float integral;
     float output;
 
     // Constructor - sets up K values
-    PIDcontroller(float Kp, float Ki, float Kd)
+    PIDcontroller(float Kp, float Ki, float Kd, float integralZone)
     {
         this->Kp = Kp;
         this->Ki = Ki;
         this->Kd = Kd;
+        this->integralZone = integralZone;
         error = 0;
         previousError = 0;
         integral = 0; // Tracks accumulated error if not responsive enough
@@ -67,10 +69,13 @@ struct PIDcontroller
         float porportionalTerm = this->error * this->Kp;
 
         // Integral Term
-        // Add the error to the integral
-        this->integral = this->integral + this->error;
-        float integralTerm = this->integral * this->Ki;
-
+        float integralTerm = 0;
+        // Add the error to the integral only if in integral zone
+        if (fabs(this->error) < this->integralZone){
+            this->integral = this->integral + this->error;
+            integralTerm = this->integral * this->Ki;
+        }
+        
         // Derivative Term
         float derivative = this->error - this->previousError;
         float derivativeTerm = derivative * this->Kd;
@@ -85,7 +90,7 @@ struct PIDcontroller
             this->output = 100;
         }
 
-        return this->output; // outputs motor speed
+        return this->output; // output
     }
 };
 
@@ -149,7 +154,13 @@ void driveHeading(float velocity, float targetHeading);
 // Test functions----------------------------------------------------------------------------------
 void testPIDTurning()
 {
+    turn_heading(40);
+    wait(1, seconds);
+    turn_heading(20);
+    wait(1, seconds);
     turn_heading(90);
+    wait(1,seconds);
+    turn_heading(-150);
 }
 
 void test_find_absolute_heading()
@@ -221,98 +232,121 @@ void calibrateSensors()
 
 // Purpose: Finds the absolute heading of the robot
 // Outputs: None
-void find_absolute_heading()
-{
+void find_absolute_heading() {
     // Declare timers
     timer leftTimer;
     timer rightTimer;
     timer reverseTimer;
-    float left_time;
-    float right_time;
-    const float ACCEPTABLE_TIME_ERROR = 0.5; // Based on tuning
-    const float SENSOR_HEIGHT = 50; //mm, based on sensor placement
-    float error = 0; // Error between the two times
 
-    do
-    {
+    float left_time = 0;
+    float right_time = 0;
+    
+    const float ACCEPTABLE_TIME_ERROR = 50; // Milliseconds (Note: check if your PID output scales well to this)
+    const float SENSOR_HEIGHT = 50; 
+    float error = 0; //In milliseconds
+
+    // Instantiate PID outside the loop so it retains memory (Integral/Derivative)
+    float kp = 0.08;
+    float ki = 0.0; 
+    float kd = 0.0; 
+    float integralZone = 0.5; // only use ki when error is within this zone
+    PIDcontroller turnPID = PIDcontroller(kp, ki, kd, integralZone);
+
+    do {
+        // Reset flags and variables for this attempt
+        bool left_edge_found = false;
+        bool right_edge_found = false;
+        left_time = 0;
+        right_time = 0;
+
         leftTimer.clear();
         rightTimer.clear();
 
-        // Drive forward slowly until each sensor goes over the edge
-        while(OPTICAL.isNearObject() && DISTANCE.objectDistance(mm) < 50){
+        // Drive forward until BOTH sensors have detected the edge
+        while (!left_edge_found || !right_edge_found) {
             
-            //Replace with PID controller for straight driving
-            motors.spin(forward, 10, percent);
+            // If right sensor is still on the table, keep driving right motor
+            if (OPTICAL.isNearObject() && !right_edge_found) {
+                // You can replace this with your straight PID driving logic
+                motors.spin(forward, 30, percent); 
+            } else if (!right_edge_found) {
+                // Right sensor just hit the edge! Record time and mark true
+                right_time = rightTimer.time(msec);
+                right_edge_found = true;
+            }
 
-            //Optical sensor is on the left side of the robot, distance sensor is on the right side
-            if (OPTICAL.isNearObject() == false)
-            {
-                left_time = leftTimer.time(msec); // Record time when left sensor goes over the edge
+            // If left sensor is still on the table, keep driving left motor
+            if (DISTANCE.objectDistance(mm) < SENSOR_HEIGHT && !left_edge_found) {
+                motors.spin(forward, 30, percent);
+            } else if (!left_edge_found) {
+                // Left sensor just hit the edge! Record time and mark true
+                left_time = leftTimer.time(msec);
+                left_edge_found = true;
             }
-            if (DISTANCE.objectDistance(mm) > 50)
-            {
-                right_time = rightTimer.time(msec); // Record time when right sensor goes over the edge
-            }
+            
+            // Small sleep to prevent CPU hogging
+            task::sleep(10); 
         }
-        // stop when both sensors are over the edge
-        motors.stop(brake);
 
-        //reverse a little to get both sensors back on the table
-        //reverse the amount of time for the sensor that went over last, plus a little extra to ensure both sensors are back on the table
-        float reverse_time = 0;
-        //Reverse for the same amount of time as the sensor that went over last
-        reverse_time = (left_time > right_time) ? left_time : right_time;
-        reverse_time += 100; // Add 100ms to ensure both sensors are back on the table
+        // Stop completely once both edges are found
+        motors.stop(brake);
+        task::sleep(100); // Allow physical momentum to settle
+
+        // Calculate recovery time based on whichever sensor drove furthest off the table
+        float reverse_time = (left_time > right_time) ? left_time : right_time;
+        reverse_time += 50; // Extra padding to clear the edge safely
+
+        // Pull back onto the table safely
         reverseTimer.clear();
-        motors.spin(reverse, 10, percent); // Replace with PID controller for straight driving
-        while (reverseTimer.time(msec) < reverse_time)
-        {
+        while (reverseTimer.time(msec) < reverse_time) {
+            motors.spin(reverse, 30, percent);
         }
         motors.stop(brake);
+       
 
-        // make correct turn based on error between the two sensors, repeat until error is acceptable
-        error = left_time - right_time;
+        // Calculate alignment error
+        error = left_time - right_time; 
 
-        //Make PID controller
-        float kp = 0.5; // Proportional gain, based on tuning
-        float ki = 0.0; // Integral gain, based on tuning
-        float kd = 0.0; // Derivative gain, based on tuning
-        PIDcontroller turnPID = PIDcontroller(kp, ki, kd);
-        float turnAmount = 0; // In percentage
+        // If error is outside acceptable limits, execute correction turn
+        if (fabs(error) > ACCEPTABLE_TIME_ERROR) {
+            float turnAmount = turnPID.calculatePID(error); //Degrees turned
 
-        // Call turn function if there is error between the two sensors
-        if (fabs(error) > ACCEPTABLE_TIME_ERROR){
-            turnAmount = turnPID.calculatePID(error); // Pass in error to PIDcontroller for output
-
-            //Determine which sensor went over the edge first and turn in the same direction
-            if (error > 0)
-            { // right sensor went over first, turn right
-                turn_heading(turnAmount);
-            }
-            else
-            { // left sensor went over first, turn left
-                turn_heading(-(turnAmount));
+            // ERROR LOGIC FIX: 
+            // If error > 0, left_time was larger, meaning right sensor hit the edge FIRST.
+            // The right side is too far forward. We must turn right to pull the right side back/bring left forward.
+            if (error > 0) {
+                Brain.Screen.clearScreen();
+                Brain.Screen.setCursor(3, 1);
+                Brain.Screen.print("Error: %.2f", error); 
+                Brain.Screen.setCursor(4, 1);
+                Brain.Screen.print("turnAmount: %.2f", turnAmount);
+                turn_heading(turnAmount); // Turn Right
+            } else { 
+                Brain.Screen.clearScreen();
+                Brain.Screen.setCursor(3, 1);
+                Brain.Screen.print("Error: %.2f", error); 
+                Brain.Screen.setCursor(4, 1);
+                Brain.Screen.print("turnAmount: %.2f", turnAmount);
+                turn_heading(-turnAmount);  // Turn Left
             }
         }
-        else{
-            motors.stop(brake);
-        }
 
-        // Print times to brain screen for debugging
+        // Debugging output
         Brain.Screen.clearScreen();
         Brain.Screen.setCursor(1, 1);
-        Brain.Screen.print("Left Time: %f", left_time);
+        Brain.Screen.print("Left Time: %.2f", left_time);
         Brain.Screen.setCursor(2, 1);
-        Brain.Screen.print("Right Time: %f", right_time);
+        Brain.Screen.print("Right Time: %.2f", right_time);
+        Brain.Screen.setCursor(3, 1);
+        Brain.Screen.print("Error: %.2f", error);
 
-    } while (fabs(left_time - right_time) < ACCEPTABLE_TIME_ERROR);
-    //Repeat until both sensors reach edge at roughly same time
+    } while (fabs(error) > ACCEPTABLE_TIME_ERROR); // FIX: Repeat while error is LARGER than acceptable bounds
 
-    Brain.Screen.setCursor(3, 1);
+    Brain.Screen.setCursor(4, 1);
     Brain.Screen.print("Absolute Heading found");
-
     return;
 }
+
 
 // Params: Heading (+ or -)
 // Purpose: Turns gyro sensor, assumes current heading is zero
@@ -330,10 +364,12 @@ void turn_heading(float targetHeading)
     float motorSpeed = 0; // In percentage
 
     // Construct PID controller object
-    float Kp = 0.7;
-    float Ki = 0.00003;
+    float Kp = 0.8;
+    float Ki = 0.0028;
     float Kd = 0.8;
-    PIDcontroller turnPID = PIDcontroller(Kp, Ki, Kd);
+    float integralZone = 0.5; //only apply Ki in this zone (less than 50 degrees of a turn)
+    PIDcontroller turnPID = PIDcontroller(Kp, Ki, Kd, integralZone);
+    
 
     // Perform movement until error is acceptable
     while (fabs(error) > acceptableError)
@@ -360,6 +396,7 @@ void turn_heading(float targetHeading)
             LM.spin(reverse, motorSpeed, percent);
         }
     }
+    motors.stop();
     return;
 }
 
