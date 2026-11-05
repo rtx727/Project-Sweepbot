@@ -20,7 +20,7 @@ motor LM(PORT7, bool(forward));
 bumper BUMPER(PORT3);
 distance DISTANCE(PORT1); //left side cliff sensor
 motor_group motors(RM, LM);
-optical OPTICAL(PORT4); //right side cliff sensor
+optical OPTICAL(PORT6); //right side cliff sensor
 controller CONTROLLER;
 inertial BrainInertial = inertial();
 touchled TOUCHLED(PORT8);
@@ -182,6 +182,11 @@ void testPIDTurning()
     turn_heading(90);
     wait(1,seconds);
     turn_heading(-150);
+    wait(1, seconds);
+    turn_heading(-40);
+    wait(1, seconds);
+    turn_heading(-20);
+    
 }
 
 void test_find_absolute_heading()
@@ -228,7 +233,7 @@ int main()
     TOUCHLED.setColor(color::red); // Start autonomous program
 
     // Tests
-    test_find_absolute_heading();
+    test_find_absolute_heading(); // call a PID that is more simple with no ki
     //testPIDTurning();
 
     // End program
@@ -265,7 +270,7 @@ void find_absolute_heading() {
     float error = 0; //In milliseconds
 
     // Instantiate PID outside the loop so it retains memory (Integral/Derivative)
-    float kp = 0.08;
+    float kp = 0.04;
     float ki = 0.0; 
     float kd = 0.0; 
     float integralZone = 500; // only use ki when error is within this zone (msec)
@@ -327,7 +332,8 @@ void find_absolute_heading() {
 
         // If error is outside acceptable limits, execute correction turn
         if (fabs(error) > ACCEPTABLE_TIME_ERROR) {
-            float turnAmount = turnPID.calculatePID(error); //Degrees turned (MAX output is 100)
+            //float turnAmount = turnPID.calculatePID(error); //Degrees turned (MAX output is 100)
+            float turnAmount = fabs(error)*.014;
 
             // If error > 0, left_time was larger, right sensor hit the edge first
             // The right side is too far forward
@@ -337,6 +343,8 @@ void find_absolute_heading() {
                 Brain.Screen.print("Error: %.2f", error); 
                 Brain.Screen.setCursor(4, 1);
                 Brain.Screen.print("turnAmount: %.2f", turnAmount);
+                Brain.Screen.setCursor(5,1);
+                Brain.Screen.print("turning right");
                 turn_heading(turnAmount); // Turn Right
             } else { 
                 Brain.Screen.clearScreen();
@@ -344,6 +352,8 @@ void find_absolute_heading() {
                 Brain.Screen.print("Error: %.2f", error); 
                 Brain.Screen.setCursor(4, 1);
                 Brain.Screen.print("turnAmount: %.2f", turnAmount);
+                Brain.Screen.setCursor(5,1);
+                Brain.Screen.print("turning left");
                 turn_heading(-turnAmount);  // Turn Left
             }
         }
@@ -382,14 +392,14 @@ void turn_heading(float targetHeading)
 
     // Construct PID controller object
     float Kp = 0.8;
-    float Ki = 0.0028;
+    float Ki = 0.00028;
     float Kd = 0.8;
 
     //Changing Ki based on error
     const float A = 0.15;   // Controls the steepness of the curve
     const float B = 3.5;    // Prevents divide-by-zero, dampens the micro-end spike
     const float C = 0.0005; // The minimum Ki baseline used for big turns
-    Ki = (A / (fabs(error) + B)) + C;
+    //Ki = (A / (fabs(error) + B)) + C;
 
     float integralZone = 90; //only apply Ki in this zone (degrees of a turn)
     PIDcontroller turnPID = PIDcontroller(Kp, Ki, Kd, integralZone);
@@ -476,7 +486,6 @@ void controlClaw(motor &m, bool collect, bool release) {
 }
 
 void Manual_Control() {
-    vexcodeInit();
 
 
     motor2.stop(hold);
