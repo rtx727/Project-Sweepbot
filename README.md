@@ -12,6 +12,7 @@ Project Management:
 - Log all updates to the robot development through git, including CAD and programs (Take Photos of Prototypes if relevant)
 - Some ideas for navigation, if auto detection fails, use button to determine the geometry of the applied table
 - Formal presentation information curation process could begin simultaneously during development
+- Videos of PID tuning
 
 MVP:
 - Automatically clean standard rectangle table without assistance
@@ -21,13 +22,13 @@ MVP:
   
 Robot Building Task Assignments:
 - Matt: Frame, wiper
-- Riley: Spinning rotor
+- Riley:
 - Richard: Frame, garbage collector
 - Yunhao: 3D printing parts TBD
 
 Program Task Assignments:
 - Matt: Edge detection, v-shape collector program
-- Riley: Trivial Functions (Driveforward, Backward, turnleft, turnright, PID for movement program)
+- Riley: Trivial Functions
 - Richard: Manual Controller program, v-shape collector program
 - Yunhao: PID controller, first edge detection algorithim
 
