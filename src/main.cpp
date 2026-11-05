@@ -18,14 +18,15 @@ vex::brain Brain;
 motor RM(PORT12, bool(reverse));
 motor LM(PORT7, bool(forward));
 bumper BUMPER(PORT3);
-distance DISTANCE(PORT1); //left side
+distance DISTANCE(PORT1); //left side cliff sensor
 motor_group motors(RM, LM);
-optical OPTICAL(PORT4);
+optical OPTICAL(PORT4); //right side cliff sensor
 controller CONTROLLER;
 inertial BrainInertial = inertial();
 touchled TOUCHLED(PORT8);
 motor motor2(PORT2, true); //claw left
 motor motor5(PORT5, false); //claw right
+
 // Structs
 const double MAX_SPEED = 50.0;
 
@@ -40,6 +41,8 @@ struct PIDcontroller
     float previousError;
     float integral;
     float output;
+    timer PIDtimer;
+    float previousTime;
 
     // Constructor - sets up K values
     PIDcontroller(float Kp, float Ki, float Kd, float integralZone)
@@ -52,6 +55,8 @@ struct PIDcontroller
         previousError = 0;
         integral = 0; // Tracks accumulated error if not responsive enough
         output = 0;
+        this->PIDtimer.reset();
+        this->previousTime = this->PIDtimer.time(msec);
     }
 
     ~PIDcontroller()
@@ -61,9 +66,16 @@ struct PIDcontroller
 
     // PID calculation function
     // Params: target and current position
-    // Output: Positive output for motorspeed in percentage
+    // Output: Positive output for motorspeed in percentage (Max 100%)
     float calculatePID(float error)
     {
+        //Calculate time difference
+        float currentTime = this->PIDtimer.time(msec);
+        float dt = currentTime - this->previousTime;
+        this->previousTime = currentTime;
+
+        if (dt <= 0) { return 0; } //Don't divide by zero
+
         // Take in error
         this->error = error;
 
@@ -74,12 +86,12 @@ struct PIDcontroller
         float integralTerm = 0;
         // Add the error to the integral only if in integral zone
         if (fabs(this->error) < this->integralZone){
-            this->integral = this->integral + this->error;
+            this->integral = this->integral + this->error * dt;
             integralTerm = this->integral * this->Ki;
         }
         
         // Derivative Term
-        float derivative = this->error - this->previousError;
+        float derivative = (this->error - this->previousError) / dt;
         float derivativeTerm = derivative * this->Kd;
         this->previousError = this->error;
 
@@ -94,6 +106,13 @@ struct PIDcontroller
 
         return this->output; // output
     }
+
+    //Ki setter method
+    void setKi(float Ki)
+    {
+        this->Ki = Ki;
+    }
+
 };
 
 // Struct to track robot position and heading
@@ -228,8 +247,6 @@ void calibrateSensors()
     } // Allow time for calibration
     
     BrainInertial.resetRotation();
-    Brain.Screen.printAt(2, 70, "Calibration Complete");
-    Brain.Screen.clearScreen();
 }
 
 // Purpose: Finds the absolute heading of the robot
@@ -251,7 +268,7 @@ void find_absolute_heading() {
     float kp = 0.08;
     float ki = 0.0; 
     float kd = 0.0; 
-    float integralZone = 0.5; // only use ki when error is within this zone
+    float integralZone = 500; // only use ki when error is within this zone (msec)
     PIDcontroller turnPID = PIDcontroller(kp, ki, kd, integralZone);
 
     do {
@@ -304,18 +321,16 @@ void find_absolute_heading() {
             motors.spin(reverse, 30, percent);
         }
         motors.stop(brake);
-       
 
         // Calculate alignment error
         error = left_time - right_time; 
 
         // If error is outside acceptable limits, execute correction turn
         if (fabs(error) > ACCEPTABLE_TIME_ERROR) {
-            float turnAmount = turnPID.calculatePID(error); //Degrees turned
+            float turnAmount = turnPID.calculatePID(error); //Degrees turned (MAX output is 100)
 
-            // ERROR LOGIC FIX: 
-            // If error > 0, left_time was larger, meaning right sensor hit the edge FIRST.
-            // The right side is too far forward. We must turn right to pull the right side back/bring left forward.
+            // If error > 0, left_time was larger, right sensor hit the edge first
+            // The right side is too far forward
             if (error > 0) {
                 Brain.Screen.clearScreen();
                 Brain.Screen.setCursor(3, 1);
@@ -351,7 +366,7 @@ void find_absolute_heading() {
 
 
 // Params: Heading (+ or -)
-// Purpose: Turns gyro sensor, assumes current heading is zero
+// Purpose: Turns using gyro sensor, assumes current heading is zero
 // Outputs: None
 void turn_heading(float targetHeading)
 {
@@ -369,9 +384,15 @@ void turn_heading(float targetHeading)
     float Kp = 0.8;
     float Ki = 0.0028;
     float Kd = 0.8;
-    float integralZone = 0.5; //only apply Ki in this zone (less than 50 degrees of a turn)
+
+    //Changing Ki based on error
+    const float A = 0.15;   // Controls the steepness of the curve
+    const float B = 3.5;    // Prevents divide-by-zero, dampens the micro-end spike
+    const float C = 0.0005; // The minimum Ki baseline used for big turns
+    Ki = (A / (fabs(error) + B)) + C;
+
+    float integralZone = 90; //only apply Ki in this zone (degrees of a turn)
     PIDcontroller turnPID = PIDcontroller(Kp, Ki, Kd, integralZone);
-    
 
     // Perform movement until error is acceptable
     while (fabs(error) > acceptableError)
@@ -397,6 +418,7 @@ void turn_heading(float targetHeading)
             RM.spin(forward, motorSpeed, percent);
             LM.spin(reverse, motorSpeed, percent);
         }
+        task:: sleep(20); // Small delay to prevent CPU hogging
     }
     motors.stop();
     return;
