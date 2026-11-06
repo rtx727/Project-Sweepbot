@@ -32,6 +32,10 @@ Program Task Assignments:
 - Richard: Manual Controller program, v-shape collector program
 - Yunhao: PID controller, first edge detection algorithim
 
+Collision logic:
+-Find unexpected high jerk for multiple loops. This implies a collision. 
+Loop this continuously at 10ms
+
 
 Edge detection logic:
 -Get two sensors to fall of table at exact same time to get absolute heading
