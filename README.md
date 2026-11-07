@@ -43,7 +43,9 @@ DO NOT DELAY THIS. ABSOLUTELY CRITICAL TO START FINDING ISSUES.
 
 Collision logic:
 -Find unexpected high jerk for multiple loops. This implies a collision. 
-Loop this continuously at 10ms
+-A collision monitor object is created in int main which needs to be passed into all movement functions.
+-In checking loops of the movement functions, the object's method of calculating jerk is called.
+-If while turning, the function returns false, the robot will stop and display a message.
 
 
 Edge detection logic:

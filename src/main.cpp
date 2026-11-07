@@ -57,7 +57,7 @@ struct collisionMonitor{
         // Destructor
     }
 
-    void detectCollision(){
+    bool detectCollision(){
         const float JERK_THRESHOLD = 3.0; //Collision threshold in m/s^3 
         
         //Calculate time difference since last reading
@@ -101,7 +101,7 @@ struct collisionMonitor{
         prevAx = currAx;
         prevAy = currAy;
         prevAz = currAz;
-        return;
+        return collisionDetected;
     }
 };
 
@@ -231,17 +231,14 @@ struct robot
 
     // Destructor
     ~robot() {}
-
-
-
 };
 
 
 
 // Function decalarations
 
-void turn_heading(float targetHeading);
-void find_absolute_heading();
+void turn_heading(float targetHeading, collisionMonitor &collision_monitor);
+void find_absolute_heading(collisionMonitor &collision_monitor);
 
 // Calibrate all sensors
 void calibrateSensors();
@@ -249,25 +246,25 @@ void calibrateSensors();
 void driveHeading(float velocity, float targetHeading);
 
 // Test functions----------------------------------------------------------------------------------
-void testPIDTurning()
+void testPIDTurning(collisionMonitor &collision_monitor)
 {
-    turn_heading(40);
+    turn_heading(40, collision_monitor);
     wait(1, seconds);
-    turn_heading(20);
+    turn_heading(20, collision_monitor);
     wait(1, seconds);
-    turn_heading(90);
+    turn_heading(90, collision_monitor);
     wait(1,seconds);
-    turn_heading(-150);
+    turn_heading(-150, collision_monitor);
     wait(1, seconds);
-    turn_heading(-40);
+    turn_heading(-40, collision_monitor);
     wait(1, seconds);
-    turn_heading(-20);
+    turn_heading(-20, collision_monitor);
     
 }
 
-void test_find_absolute_heading()
+void test_find_absolute_heading(collisionMonitor &collision_monitor)
 {
-    find_absolute_heading();
+    find_absolute_heading(collision_monitor);
 }
 
 // Event functions
@@ -304,13 +301,16 @@ int main()
     // Cosntruct robot object
     // robot table_cleaner;
 
+    //Construct collision monitor object
+    collisionMonitor collision_monitor;
+
     // Setup events
     // TOUCHLED.pressed(handle_TOUCLED,end_autonomous, TOUCLED_COLOR));
     TOUCHLED.setColor(color::red); // Start autonomous program
 
     // Tests
-    test_find_absolute_heading(); // call a PID that is more simple with no ki
-    //testPIDTurning();
+    test_find_absolute_heading(collision_monitor); // call a PID that is more simple with no ki
+    //testPIDTurning(collision_monitor););
 
     // End program
     // Brain.programStop();
@@ -332,7 +332,7 @@ void calibrateSensors()
 
 // Purpose: Finds the absolute heading of the robot
 // Outputs: None
-void find_absolute_heading() {
+void find_absolute_heading(collisionMonitor &collision_monitor) {
     // Declare timers
     timer leftTimer;
     timer rightTimer;
@@ -421,7 +421,7 @@ void find_absolute_heading() {
                 Brain.Screen.print("turnAmount: %.2f", turnAmount);
                 Brain.Screen.setCursor(5,1);
                 Brain.Screen.print("turning right");
-                turn_heading(turnAmount); // Turn Right
+                turn_heading(turnAmount, collision_monitor); // Turn Right
             } else { 
                 Brain.Screen.clearScreen();
                 Brain.Screen.setCursor(3, 1);
@@ -430,7 +430,7 @@ void find_absolute_heading() {
                 Brain.Screen.print("turnAmount: %.2f", turnAmount);
                 Brain.Screen.setCursor(5,1);
                 Brain.Screen.print("turning left");
-                turn_heading(-turnAmount);  // Turn Left
+                turn_heading(-turnAmount, collision_monitor);  // Turn Left
             }
         }
 
@@ -454,7 +454,7 @@ void find_absolute_heading() {
 // Params: Heading (+ or -)
 // Purpose: Turns using gyro sensor, assumes current heading is zero
 // Outputs: None
-void turn_heading(float targetHeading)
+void turn_heading(float targetHeading, collisionMonitor &collision_monitor)
 {
     // Stop all motors
     motors.stop(brake);
@@ -470,12 +470,6 @@ void turn_heading(float targetHeading)
     float Kp = 0.8;
     float Ki = 0.00028;
     float Kd = 0.8;
-
-    //Changing Ki based on error
-    const float A = 0.15;   // Controls the steepness of the curve
-    const float B = 3.5;    // Prevents divide-by-zero, dampens the micro-end spike
-    const float C = 0.0005; // The minimum Ki baseline used for big turns
-    //Ki = (A / (fabs(error) + B)) + C;
 
     float integralZone = 90; //only apply Ki in this zone (degrees of a turn)
     PIDcontroller turnPID = PIDcontroller(Kp, Ki, Kd, integralZone);
@@ -505,6 +499,16 @@ void turn_heading(float targetHeading)
             LM.spin(reverse, motorSpeed, percent);
         }
         task:: sleep(20); // Small delay to prevent CPU hogging
+
+        //check for collision
+        if (collision_monitor.detectCollision()){
+            motors.stop(brake);
+            while (true){
+                Brain.Screen.clearScreen();
+                Brain.Screen.setCursor(5, 1);
+                Brain.Screen.print("Waiting for user to clear collision");
+            }
+        }
     }
     motors.stop();
     return;
