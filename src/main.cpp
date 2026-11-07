@@ -459,25 +459,16 @@ void driveMotor(motor &m, double speed) { //mannual control
     }
 }
 
-void controlClaw(motor &m, bool collect, bool release) {
-  const double OPEN_POSITION = 120;
-  //const double TOLERANCE = 2;
-  double position = m.position(degrees);
-  double speed = MAX_SPEED/3; 
-  if(collect && !release && position > 20){
-    if (position < 30) {
-      speed = 5;
-    }
-    m.spin(reverse, speed, percent);
-  }else if(release && !collect && position< OPEN_POSITION){
-    if(position > 100){
-      speed = 5;
-    }
-    m.spin(forward, speed, percent);
-  }else{
+bool controlClaw(motor &m, bool open) {
+  double target = open ? 120 : 0;
+  m.spinToPosition(target, degrees,true);
+  bool reached = fabs(m.position(degrees) - target) <= 3;
+  if (reached) {
     m.stop(hold);
+  } else {
+    m.stop(brake);
   }
-  
+  return reached;
 }
 
 void Manual_Control() {
@@ -521,12 +512,12 @@ void Manual_Control() {
 
     double clawInput = CONTROLLER.AxisC.position();
 
-    bool collect = clawInput < -20;
-    bool release = clawInput > 20;
+    bool right_release = clawInput > 20;
+    bool left_release = clawInput < -20;
 
 
-    controlClaw(motor2, collect, release);
-    controlClaw(motor5, collect, release);
+    controlClaw(motor2, left_release);
+    controlClaw(motor5, right_release);
 
     wait(10, msec);
   }
