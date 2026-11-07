@@ -589,7 +589,7 @@ void driveDistance(float targetDistance, float targetSpeed){
 }
 
 void test_edge_detection(){
-  for(int i = 0; i < 3; i++){
+  for(int i = 0; i < 4; i++){
     find_absolute_heading();
 
     turn_heading(90);
