@@ -539,3 +539,30 @@ void Manual_Control() {
     }
 }
 // Matt -------------------------------------------------------------------------------------------
+void driveDistance(float targetDistance, float targetSpeed){
+  const float wheelCirc = 200.0;//In mm
+
+  float targetDegree = targetDistance / wheelCirc * 360.0;
+
+  motors.resetPosition();
+  motors.spin(forward, targetSpeed, percent);
+
+  while(motors.position(degrees) < targetDegree){ //assume it won't drive back, only forward
+    wait(10, msec);
+  }
+  motors.stop(brake);
+}
+
+void test_edge_detection(){
+  for(int i = 0; i < 3; i++){
+    find_absolute_heading();
+
+    turn_heading(90);
+
+    driveDistance(50, 50);
+
+    turn_heading(-90);
+
+    driveDistance(50, 70);
+  }
+}
