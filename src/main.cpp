@@ -491,8 +491,6 @@ void Manual_Control() {
     motor2.stop(hold);
     motor5.stop(hold);
 
-    motor2.resetPosition();
-    motor5.resetPosition();
 
     while (true) {
 
