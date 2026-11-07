@@ -439,11 +439,61 @@ void turn_heading(float targetHeading)
 // Params: Velocity, heading
 // Purpose: Drives forward using gyro sensor
 // Outputs: None
-void driveHeading(float velocity, float targetHeading)
-{
-    // Maybe use PID controller to subtract output from one wheel and add to another?
-}
+void drivingHeading()
+{ 
+    float targetHeading = BrainInertial.rotation(degrees);
+    velocity = 40;
 
+      // Record encoder positions AFTER the turn is finished
+      //const float leftStart = LM.position(degrees);
+      //const float rightStart = RM.position(degrees);
+    
+      float Kp = 0.2;
+      float Ki = 0.0;
+      float Kd = 0.0;
+      float integralZone = 20;
+    
+      PIDcontroller drivePID(Kp, Ki, Kd, integralZone);
+    
+      const float SENSOR_HEIGHT = 50; // mm, calibrate this
+      const float MAX_CORRECTION = 10; // motor speed percentage
+    
+      timer driveTimer;
+      driveTimer.clear();
+    
+      // Safety timeout -- adjust for your table dimensions
+      while (DISTANCE.isObjectDetected() && OPTICAL.isNearObject()){
+        // Continuous inertial heading feedback
+        float currentHeading = BrainInertial.rotation(degrees);
+    
+        float error = targetHeading - currentHeading;
+    
+        float correctionMagnitude = drivePID.calculatePID(error);
+    
+        if (correctionMagnitude > MAX_CORRECTION){
+          correctionMagnitude = MAX_CORRECTION;
+        }
+    
+        // Restore the direction of the correction
+        if (error < 0){
+          correctionMagnitude = -correctionMagnitude;
+        }
+        float correction = correctionMagnitude;
+    
+        // Ignore very small heading errors
+        if (fabs(error) < 0.2){
+            correction = 0;
+        }
+    
+        float leftSpeed = velocity + correction;
+        float rightSpeed = velocity - correction;
+    
+        LM.spin(forward, leftSpeed, percent);
+        RM.spin(forward, rightSpeed, percent);
+    
+        task::sleep(20);
+    }
+}
 // Richard ----------------------------------------------------------------------------------------
 void driveMotor(motor &m, double speed) { //mannual control
     if (speed > MAX_SPEED) {
