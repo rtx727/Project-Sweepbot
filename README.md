@@ -43,7 +43,10 @@ DO NOT DELAY THIS. ABSOLUTELY CRITICAL TO START FINDING ISSUES.
 
 Collision logic:
 -Find unexpected high jerk for multiple loops. This implies a collision. 
-Loop this continuously at 10ms
+-A collision monitor object is created in int main which needs to be passed into all movement functions.
+-In checking loops of the movement functions, the object's method of calculating jerk is called.
+The function will be changed from void to bool such that it returns the boolean of whether a 
+collision has been detected.
 
 
 Edge detection logic:
