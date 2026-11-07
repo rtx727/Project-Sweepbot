@@ -30,6 +30,82 @@ motor motor5(PORT5, false); //claw right
 // Structs
 const double MAX_SPEED = 50.0;
 
+//Holds variable for collision boolean
+struct collisionMonitor{
+    bool collisionDetected;
+    int collisionCount;
+    timer jerkTimer;
+    float previousTime;
+    //Records acceleration values from the last loop to calculate jerk
+    float prevAx;
+    float prevAy;
+    float prevAz;
+
+
+    collisionMonitor()
+    {
+        collisionDetected = false;
+        collisionCount = 0;
+        jerkTimer.reset();
+        previousTime = 0;
+        prevAx = BrainInertial.acceleration(xaxis);
+        prevAy = BrainInertial.acceleration(yaxis);
+        prevAz = BrainInertial.acceleration(zaxis);
+    }
+    ~collisionMonitor()
+    {
+        // Destructor
+    }
+
+    void detectCollision(){
+        const float JERK_THRESHOLD = 3.0; //Collision threshold in m/s^3 
+        
+        //Calculate time difference since last reading
+        float currentTime = jerkTimer.time(msec) / 1000.0; // Convert to seconds
+        float dt = currentTime - previousTime;
+
+        float currAx = BrainInertial.acceleration(xaxis);
+        float currAy = BrainInertial.acceleration(yaxis);    
+        float currAz = BrainInertial.acceleration(zaxis);
+
+        // Do not divide by zero
+        if (dt > 0){
+            float jerkX = (currAx - prevAx) / dt;
+            float jerkY = (currAy - prevAy) / dt;
+            float jerkZ = (currAz - prevAz) / dt;
+
+            //Calculate jerk magnitude
+            float jerk = sqrt(jerkX * jerkX + jerkY * jerkY + jerkZ * jerkZ);
+
+            //If jerk exceeds threshold, increment collision count
+            if (jerk > JERK_THRESHOLD){
+                collisionCount++;
+            }
+
+            //Only register collison if loop happens more than 2 times but less than 5 times
+            if (collisionCount > 2 && collisionCount < 5 && !collisionDetected){
+                collisionDetected = true;
+                Brain.Screen.clearScreen();
+                Brain.Screen.setCursor(1, 1);
+                Brain.Screen.print("Collision Detected");
+            }
+            //Probably not a collision if it happens more than 5 times in a row, reset the counter
+            else if (collisionCount >= 5){
+                collisionDetected = false;
+                collisionCount = 0;
+            }
+            
+        }
+        //Update member variables
+        previousTime = currentTime;
+        prevAx = currAx;
+        prevAy = currAy;
+        prevAz = currAz;
+        return;
+    }
+};
+
+
 // Struct to hold PID controller values and perform calculations
 struct PIDcontroller
 {
