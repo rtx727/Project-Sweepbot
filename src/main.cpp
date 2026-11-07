@@ -170,7 +170,7 @@ void find_absolute_heading();
 // Calibrate all sensors
 void calibrateSensors();
 
-void driveHeading(float velocity, float targetHeading);
+void driveHeading();
 
 // Test functions----------------------------------------------------------------------------------
 void testPIDTurning()
