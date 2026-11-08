@@ -170,7 +170,7 @@ void find_absolute_heading();
 // Calibrate all sensors
 void calibrateSensors();
 
-void driveHeading();
+void drivingHeading();
 
 // Test functions----------------------------------------------------------------------------------
 void testPIDTurning()
@@ -442,32 +442,38 @@ void turn_heading(float targetHeading)
 void drivingHeading()
 { 
     float targetHeading = BrainInertial.rotation(degrees);
-    velocity = 40;
+    float velocity = 40;
 
       // Record encoder positions AFTER the turn is finished
       //const float leftStart = LM.position(degrees);
       //const float rightStart = RM.position(degrees);
     
-      float Kp = 0.2;
+      float Kp = 0.88;
       float Ki = 0.0;
-      float Kd = 0.0;
+      float Kd = 0.3;
       float integralZone = 20;
     
       PIDcontroller drivePID(Kp, Ki, Kd, integralZone);
     
-      const float SENSOR_HEIGHT = 50; // mm, calibrate this
+      //const float SENSOR_HEIGHT = 50; // mm, calibrate this
       const float MAX_CORRECTION = 10; // motor speed percentage
     
       timer driveTimer;
       driveTimer.clear();
+      Brain.Screen.clearScreen();
+      Brain.Screen.setCursor(1,1);
     
       // Safety timeout -- adjust for your table dimensions
-      while (DISTANCE.isObjectDetected() && OPTICAL.isNearObject()){
+      while (DISTANCE.objectDistance(mm)<50 && !BUMPER.pressing()){
         // Continuous inertial heading feedback
+
         float currentHeading = BrainInertial.rotation(degrees);
-    
+        Brain.Screen.print("%f", targetHeading);
+        Brain.Screen.setCursor(2,1);
+        Brain.Screen.print("%f", currentHeading);
         float error = targetHeading - currentHeading;
-    
+        Brain.Screen.setCursor(3,1);
+        Brain.Screen.print("%f",error);
         float correctionMagnitude = drivePID.calculatePID(error);
     
         if (correctionMagnitude > MAX_CORRECTION){
@@ -481,7 +487,7 @@ void drivingHeading()
         float correction = correctionMagnitude;
     
         // Ignore very small heading errors
-        if (fabs(error) < 0.2){
+        if (fabs(error) < 0.5){
             correction = 0;
         }
     
@@ -493,6 +499,7 @@ void drivingHeading()
     
         task::sleep(20);
     }
+    motors.stop();
 }
 // Richard ----------------------------------------------------------------------------------------
 void driveMotor(motor &m, double speed) { //mannual control
