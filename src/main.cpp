@@ -594,10 +594,6 @@ void test_edge_detection(){
 
     turn_heading(90);
 
-    driveDistance(50, 50);
-
-    turn_heading(-90);
-
-    driveDistance(50, 70);
+    drivingHeading();
   }
 }
