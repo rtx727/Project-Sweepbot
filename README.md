@@ -28,18 +28,25 @@ Robot Building Task Assignments:
 
 Program Task Assignments:
 - Matt: Edge detection, v-shape collector program
-- Riley: Trivial Functions, Tough LED handle inputs
+- Riley: ~~Trivial Functions~~, Touch LED handle inputs
 - Richard: Manual Controller program, v-shape collector program
-- Yunhao: ~~PID controller~~, ~~first edge detection algorithim~~, collision detection using accelerometer
+- Yunhao: ~~PID controller~~, ~~first edge detection algorithim~~, ~~collision detection using accelerometer~~
 
 Weekend 1 tasks:
--Solve lack of friction problem
--Begin collision detection code
--Get first trial in: ->Use find absolute heading and a loop to travel down the table to wipe all of it.
+-~~Solve lack of friction problem~~
+-~~Begin collision detection code~~
+-~~Get first trial in: ->Use find absolute heading and a loop to travel down the table to wipe all of it.~~
 DO NOT DELAY THIS. ABSOLUTELY CRITICAL TO START FINDING ISSUES.
 -Think of how to incorporate functions together into a program
 -Clean up code on spare time
 
+Week 2:
+-Integrate algorithim
+-Formal presentation preparation, presentation
+-Look into slowing down turns
+-Cleaning up code
+-See collector collect things
+-Make robot object --> check compounded error in heading
 
 Collision logic:
 -Find unexpected high jerk for multiple loops. This implies a collision. 
