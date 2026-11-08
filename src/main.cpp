@@ -57,8 +57,8 @@ struct collisionMonitor{
         // Destructor
     }
 
-    bool detectCollision(){
-        const float JERK_THRESHOLD = 3.0; //Collision threshold in m/s^3 
+    bool detectCollisionLin(){
+        const float JERK_THRESHOLD = 6.0; //Collision threshold in m/s^3 
         
         //Calculate time difference since last reading
         float currentTime = jerkTimer.time(msec) / 1000.0; // Convert to seconds
@@ -103,6 +103,13 @@ struct collisionMonitor{
         prevAz = currAz;
         return collisionDetected;
     }
+    
+    //
+    bool detectCollisionAng(){
+
+        return collisionDetected;
+    }
+
 };
 
 
@@ -120,6 +127,7 @@ struct PIDcontroller
     timer PIDtimer;
     float previousTime;
 
+
     // Constructor - sets up K values
     PIDcontroller(float Kp, float Ki, float Kd, float integralZone)
     {
@@ -133,6 +141,7 @@ struct PIDcontroller
         output = 0;
         this->PIDtimer.reset();
         this->previousTime = this->PIDtimer.time(msec);
+
     }
 
     ~PIDcontroller()
@@ -173,6 +182,22 @@ struct PIDcontroller
 
         // Make output term
         this->output = fabs(porportionalTerm + integralTerm + derivativeTerm);
+
+        //Slew Output to prevent sudden changes in motor speed for first half a second
+        float slewFactor = 1.0; // Default to no slew
+        if (this->PIDtimer.time(msec) < 500)
+        {
+            // Calculate the number of 25ms intervals in the first 500ms
+            float timeDivision = this->PIDtimer.time(msec) / 25.0; // 0 to 20
+            for (int i = 0; i<timeDivision; i++){
+                //Output will be full output by half a second
+                //Scaled up by 5% each time
+                slewFactor = slewFactor * (0.05 + 0.05*i); // 0.05, 0.1, 0.15, ... 1.0
+            }
+        }
+
+        //Apply slew factor to output
+        this->output = this->output * slewFactor;
 
         // Max motor speed is 100%
         if (this->output > 100)
@@ -236,9 +261,9 @@ struct robot
 
 
 // Function decalarations
-
+void turn_heading(float targetHeading);
 void turn_heading(float targetHeading, collisionMonitor &collision_monitor);
-void find_absolute_heading(collisionMonitor &collision_monitor);
+void find_absolute_heading();
 
 // Calibrate all sensors
 void calibrateSensors();
@@ -262,9 +287,9 @@ void testPIDTurning(collisionMonitor &collision_monitor)
     
 }
 
-void test_find_absolute_heading(collisionMonitor &collision_monitor)
+void test_find_absolute_heading()
 {
-    find_absolute_heading(collision_monitor);
+    find_absolute_heading();
 }
 
 // Event functions
@@ -309,9 +334,10 @@ int main()
     TOUCHLED.setColor(color::red); // Start autonomous program
 
     // Tests
-    test_find_absolute_heading(collision_monitor); // call a PID that is more simple with no ki
+    test_find_absolute_heading(); // call a PID that is more simple with no ki
     //testPIDTurning(collision_monitor););
 
+    TOUCHLED.setColor(color::blue); // End autonomous program
     // End program
     // Brain.programStop();
 }
@@ -331,8 +357,9 @@ void calibrateSensors()
 }
 
 // Purpose: Finds the absolute heading of the robot
+// Inputs: None
 // Outputs: None
-void find_absolute_heading(collisionMonitor &collision_monitor) {
+void find_absolute_heading() {
     // Declare timers
     timer leftTimer;
     timer rightTimer;
@@ -421,7 +448,7 @@ void find_absolute_heading(collisionMonitor &collision_monitor) {
                 Brain.Screen.print("turnAmount: %.2f", turnAmount);
                 Brain.Screen.setCursor(5,1);
                 Brain.Screen.print("turning right");
-                turn_heading(turnAmount, collision_monitor); // Turn Right
+                turn_heading(turnAmount); // Turn Right
             } else { 
                 Brain.Screen.clearScreen();
                 Brain.Screen.setCursor(3, 1);
@@ -430,7 +457,7 @@ void find_absolute_heading(collisionMonitor &collision_monitor) {
                 Brain.Screen.print("turnAmount: %.2f", turnAmount);
                 Brain.Screen.setCursor(5,1);
                 Brain.Screen.print("turning left");
-                turn_heading(-turnAmount, collision_monitor);  // Turn Left
+                turn_heading(-turnAmount);  // Turn Left
             }
         }
 
@@ -451,7 +478,7 @@ void find_absolute_heading(collisionMonitor &collision_monitor) {
 }
 
 
-// Params: Heading (+ or -)
+// Params: Heading (+ or -), collision monitor object
 // Purpose: Turns using gyro sensor, assumes current heading is zero
 // Outputs: None
 void turn_heading(float targetHeading, collisionMonitor &collision_monitor)
@@ -473,6 +500,8 @@ void turn_heading(float targetHeading, collisionMonitor &collision_monitor)
 
     float integralZone = 90; //only apply Ki in this zone (degrees of a turn)
     PIDcontroller turnPID = PIDcontroller(Kp, Ki, Kd, integralZone);
+
+    task::sleep(20); // Allow time or timer to become not zero for first loop iteration
 
     // Perform movement until error is acceptable
     while (fabs(error) > acceptableError)
@@ -501,7 +530,7 @@ void turn_heading(float targetHeading, collisionMonitor &collision_monitor)
         task:: sleep(20); // Small delay to prevent CPU hogging
 
         //check for collision
-        if (collision_monitor.detectCollision()){
+        if (collision_monitor.detectCollisionLin()){
             motors.stop(brake);
             while (true){
                 Brain.Screen.clearScreen();
@@ -513,6 +542,63 @@ void turn_heading(float targetHeading, collisionMonitor &collision_monitor)
     motors.stop();
     return;
 }
+
+// Params: Heading (+ or -)
+// Purpose: Turns using gyro sensor, assumes current heading is zero
+// Outputs: None
+//OVERLOADED FUNCTION FOR HEADING DETECTION, NO COLLISION MONITORING
+void turn_heading(float targetHeading)
+{
+    // Stop all motors
+    motors.stop(brake);
+
+    // Set current heading to 0;
+    BrainInertial.resetRotation();
+    float error = targetHeading;  // Initial error is just heading
+    float acceptableError = 0.25; // degrees
+    float currentHeading = 0;
+    float motorSpeed = 0; // In percentage
+
+    // Construct PID controller object
+    float Kp = 0.8;
+    float Ki = 0.00028;
+    float Kd = 0.8;
+
+    float integralZone = 90; //only apply Ki in this zone (degrees of a turn)
+    PIDcontroller turnPID = PIDcontroller(Kp, Ki, Kd, integralZone);
+
+    task::sleep(20); // Allow time or timer to become not zero for first loop iteration
+
+    // Perform movement until error is acceptable
+    while (fabs(error) > acceptableError)
+    {
+        // continuously find current heading and error
+        currentHeading = BrainInertial.rotation(degrees);
+        error = targetHeading - currentHeading;
+        Brain.Screen.setCursor(1, 1);
+        Brain.Screen.print("%f", currentHeading);
+        Brain.Screen.setCursor(2, 1);
+        Brain.Screen.print("%f", error);
+
+        // Determine which direction to turn
+        if (error > 0)
+        {                                             // right turn
+            motorSpeed = turnPID.calculatePID(error); // Pass in error to PIDcontroller for output
+            RM.spin(reverse, motorSpeed, percent);
+            LM.spin(forward, motorSpeed, percent);
+        }
+        else
+        {                                             // left turn
+            motorSpeed = turnPID.calculatePID(error); // Pass in error to PIDcontroller for output
+            RM.spin(forward, motorSpeed, percent);
+            LM.spin(reverse, motorSpeed, percent);
+        }
+        task:: sleep(20); // Small delay to prevent CPU hogging
+    }
+    motors.stop();
+    return;
+}
+
 
 // Riley ------------------------------------------------------------------------------------------
 
