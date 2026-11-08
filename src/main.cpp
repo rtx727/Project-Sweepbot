@@ -34,20 +34,29 @@ const double MAX_SPEED = 50.0;
 struct collisionMonitor{
     bool collisionDetected;
     int collisionCount;
-    timer jerkTimer;
+    timer collisionTimer;
     float previousTime;
+
     //Records acceleration values from the last loop to calculate jerk
     float prevAx;
     float prevAy;
     float prevAz;
+
+    //Records rotational values from last loop to find angular acceleration
+    float prevGx;
+    float prevGy;
+    float prevGz;
 
 
     collisionMonitor()
     {
         collisionDetected = false;
         collisionCount = 0;
-        jerkTimer.reset();
+        collisionTimer.reset();
         previousTime = 0;
+        prevGx = BrainInertial.gyroRate(xaxis, dps);
+        prevGy = BrainInertial.gyroRate(yaxis, dps);
+        prevGz = BrainInertial.gyroRate(zaxis, dps);
         prevAx = BrainInertial.acceleration(xaxis);
         prevAy = BrainInertial.acceleration(yaxis);
         prevAz = BrainInertial.acceleration(zaxis);
@@ -61,7 +70,7 @@ struct collisionMonitor{
         const float JERK_THRESHOLD = 6.0; //Collision threshold in m/s^3 
         
         //Calculate time difference since last reading
-        float currentTime = jerkTimer.time(msec) / 1000.0; // Convert to seconds
+        float currentTime = collisionTimer.time(msec) / 1000.0; // Convert to seconds
         float dt = currentTime - previousTime;
 
         float currAx = BrainInertial.acceleration(xaxis);
@@ -103,9 +112,51 @@ struct collisionMonitor{
         prevAz = currAz;
         return collisionDetected;
     }
-    
-    //
+
+    // Detects collisions based on angular acceleration
     bool detectCollisionAng(){
+        const float ANGULAR_ACCEL_THRESHOLD = 200.0; //Collision threshold in degrees/s^2
+
+        //Calculate time difference since last reading
+        float currentTime = collisionTimer.time(msec) / 1000.0; // Convert to seconds
+        float dt = currentTime - previousTime;
+
+        float currGx = BrainInertial.gyroRate(xaxis, dps);
+        float currGy = BrainInertial.gyroRate(yaxis, dps);
+        float currGz = BrainInertial.gyroRate(zaxis, dps);
+
+        if (dt > 0){
+            float angAccelX = (currGx - prevGx) / dt;
+            float angAccelY = (currGy - prevGy) / dt;
+            float angAccelZ = (currGz - prevGz) / dt;
+
+            //Calculate angular acceleration magnitude
+            float angAccel = sqrt(angAccelX * angAccelX + angAccelY * angAccelY + angAccelZ * angAccelZ);
+
+            //If angular acceleration exceeds threshold, increment collision count
+            if (angAccel > ANGULAR_ACCEL_THRESHOLD){
+                collisionCount++;
+            }
+
+            //Only register collison if loop happens more than 2 times but less than 5 times
+            if (collisionCount > 2 && collisionCount < 5 && !collisionDetected){
+                collisionDetected = true;
+                Brain.Screen.clearScreen();
+                Brain.Screen.setCursor(1, 1);
+                Brain.Screen.print("Collision Detected");
+            }
+            //Probably not a collision if it happens more than 5 times in a row, reset the counter
+            else if (collisionCount >= 5){
+                collisionDetected = false;
+                collisionCount = 0;
+            }
+        }
+
+        //Update member variables
+        previousTime = currentTime;
+        prevGx = currGx;
+        prevGy = currGy;
+        prevGz = currGz;
 
         return collisionDetected;
     }
@@ -274,17 +325,17 @@ void driveHeading(float velocity, float targetHeading);
 void testPIDTurning(collisionMonitor &collision_monitor)
 {
     turn_heading(40, collision_monitor);
-    wait(1, seconds);
+    task::sleep(1000);
     turn_heading(20, collision_monitor);
-    wait(1, seconds);
+    task::sleep(1000);
     turn_heading(90, collision_monitor);
-    wait(1,seconds);
+    task::sleep(1000);
     turn_heading(-150, collision_monitor);
-    wait(1, seconds);
-    turn_heading(-40, collision_monitor);
-    wait(1, seconds);
-    turn_heading(-20, collision_monitor);
-    
+    task::sleep(1000);
+    turn_heading(-50, collision_monitor);
+    task::sleep(1000);
+    turn_heading(-10, collision_monitor);
+    task::sleep(1000);
 }
 
 void test_find_absolute_heading()
@@ -503,6 +554,16 @@ void turn_heading(float targetHeading, collisionMonitor &collision_monitor)
 
     task::sleep(20); // Allow time or timer to become not zero for first loop iteration
 
+    // Read gyro values
+    timer gyroTimer;
+    gyroTimer.reset();
+    float gx = BrainInertial.gyroRate(xaxis, dps);
+    float gy = BrainInertial.gyroRate(yaxis, dps);
+    float gz = BrainInertial.gyroRate(zaxis, dps);
+    float peakRotationalAcceleration = 0; 
+    float timePrev = 0;
+
+
     // Perform movement until error is acceptable
     while (fabs(error) > acceptableError)
     {
@@ -538,8 +599,40 @@ void turn_heading(float targetHeading, collisionMonitor &collision_monitor)
                 Brain.Screen.print("Waiting for user to clear collision");
             }
         }
+
+        //Calculate rotational acceleration (gyroscope)
+        float gxNew = BrainInertial.gyroRate(xaxis, dps);
+        float gyNew = BrainInertial.gyroRate(yaxis, dps);
+        float gzNew = BrainInertial.gyroRate(zaxis, dps);
+
+        float dgx = gxNew - gx;
+        float dgy = gyNew - gy;
+        float dgz = gzNew - gz;
+
+        //Calculate time difference since last loop iteration
+        float dt = gyroTimer.time(msec)/1000.0 - timePrev;
+        timePrev = gyroTimer.time(msec)/1000.0;
+
+        if (dt > 0) {
+            float accelgx = dgx / dt;
+            float accelgy = dgy / dt;
+            float accelgz = dgz / dt;
+            float rotationalAcceleration = sqrt(accelgx * accelgx + accelgy * accelgy + accelgz * accelgz);
+            if (rotationalAcceleration > peakRotationalAcceleration) {
+                peakRotationalAcceleration = rotationalAcceleration;
+            }
+        }
+
+        gx = gxNew;
+        gy = gyNew;
+        gz = gzNew;
     }
     motors.stop();
+    
+    Brain.Screen.clearLine(4);
+    Brain.Screen.setCursor(4, 1);
+    Brain.Screen.print("Peak Rotational Acceleration: %f", peakRotationalAcceleration);
+    task::sleep(2000); // Allow time to read peak rotational acceleration
     return;
 }
 
@@ -547,6 +640,7 @@ void turn_heading(float targetHeading, collisionMonitor &collision_monitor)
 // Purpose: Turns using gyro sensor, assumes current heading is zero
 // Outputs: None
 //OVERLOADED FUNCTION FOR HEADING DETECTION, NO COLLISION MONITORING
+//ONLY CALLED BY find_absolute_heading()
 void turn_heading(float targetHeading)
 {
     // Stop all motors
