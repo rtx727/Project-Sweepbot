@@ -27,8 +27,12 @@ touchled TOUCHLED(PORT8);
 motor motor2(PORT2, true); //claw left
 motor motor5(PORT5, false); //claw right
 
+
+//Global variables ----- -                ------------------------------------------------------------------------------ TO BE REMOVED LATER
+const float MAX_SPEED = 50.0;
+
+
 // Structs
-const double MAX_SPEED = 50.0;
 
 // Struct to hold PID controller values and perform calculations
 struct PIDcontroller
@@ -316,13 +320,11 @@ void find_absolute_heading() {
         motors.stop(brake);
         task::sleep(100); // Allow physical momentum to settle
 
-        // Calculate recovery time based on whichever sensor drove furthest off the table
-        float reverse_time = (left_time > right_time) ? left_time : right_time;
-        reverse_time += 50; // Extra padding to clear the edge safely
 
         // Pull back onto the table safely
         reverseTimer.clear();
-        while (reverseTimer.time(msec) < reverse_time) {
+        //Add a buffer of 100 ms to bring both sensors back on table
+        while (reverseTimer.time(msec) < fabs(error) + 100) { 
             motors.spin(reverse, 30, percent);
         }
         motors.stop(brake);
@@ -333,6 +335,7 @@ void find_absolute_heading() {
         // If error is outside acceptable limits, execute correction turn
         if (fabs(error) > ACCEPTABLE_TIME_ERROR) {
             //float turnAmount = turnPID.calculatePID(error); //Degrees turned (MAX output is 100)
+            //Tuned number of 0.14 to make the right amount of turn based on error
             float turnAmount = fabs(error)*.014;
 
             // If error > 0, left_time was larger, right sensor hit the edge first
@@ -503,6 +506,7 @@ void drivingHeading()
 }
 // Richard ----------------------------------------------------------------------------------------
 void driveMotor(motor &m, double speed) { //mannual control
+    
     if (speed > MAX_SPEED) {
         speed = MAX_SPEED;
     } else if (speed < -MAX_SPEED) {
