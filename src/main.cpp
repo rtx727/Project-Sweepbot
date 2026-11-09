@@ -115,7 +115,7 @@ struct collisionMonitor{
 
     // Detects collisions based on angular acceleration
     bool detectCollisionAng(){
-        const float ANGULAR_ACCEL_THRESHOLD = 200.0; //Collision threshold in degrees/s^2
+        const float ANGULAR_ACCEL_THRESHOLD = 3200.0; //Collision threshold in degrees/s^2
 
         //Calculate time difference since last reading
         float currentTime = collisionTimer.time(msec) / 1000.0; // Convert to seconds
@@ -125,31 +125,36 @@ struct collisionMonitor{
         float currGy = BrainInertial.gyroRate(yaxis, dps);
         float currGz = BrainInertial.gyroRate(zaxis, dps);
 
-        if (dt > 0){
-            float angAccelX = (currGx - prevGx) / dt;
-            float angAccelY = (currGy - prevGy) / dt;
-            float angAccelZ = (currGz - prevGz) / dt;
+        if (dt > 0){ // Do not divide by zero
+            //Calculate angular acceleration for each axis
+            float dGX = (currGx - prevGx) / dt;
+            float dGY = (currGy - prevGy) / dt;
+            float dGZ = (currGz - prevGz) / dt;
 
             //Calculate angular acceleration magnitude
-            float angAccel = sqrt(angAccelX * angAccelX + angAccelY * angAccelY + angAccelZ * angAccelZ);
+            float angAccel = sqrt(dGX * dGX + dGY * dGY + dGZ * dGZ);
+
+            
 
             //If angular acceleration exceeds threshold, increment collision count
             if (angAccel > ANGULAR_ACCEL_THRESHOLD){
                 collisionCount++;
-            }
-
-            //Only register collison if loop happens more than 2 times but less than 5 times
-            if (collisionCount > 2 && collisionCount < 5 && !collisionDetected){
                 collisionDetected = true;
                 Brain.Screen.clearScreen();
                 Brain.Screen.setCursor(1, 1);
                 Brain.Screen.print("Collision Detected");
+
             }
-            //Probably not a collision if it happens more than 5 times in a row, reset the counter
-            else if (collisionCount >= 5){
-                collisionDetected = false;
-                collisionCount = 0;
-            }
+
+            /*
+            //Only register collison if loop happens 2 times in a row
+            if (collisionCount > 1 && !collisionDetected){
+                collisionDetected = true;
+                Brain.Screen.clearScreen();
+                Brain.Screen.setCursor(1, 1);
+                Brain.Screen.print("Collision Detected");
+            }*/
+            
         }
 
         //Update member variables
@@ -418,7 +423,6 @@ void find_absolute_heading() {
 
     float left_time = 0;
     float right_time = 0;
-    
     const float ACCEPTABLE_TIME_ERROR = 50; // Milliseconds (Note: check if your PID output scales well to this)
     const float SENSOR_HEIGHT = 50; 
     float error = 0; //In milliseconds
@@ -470,13 +474,9 @@ void find_absolute_heading() {
         motors.stop(brake);
         task::sleep(100); // Allow physical momentum to settle
 
-        // Calculate recovery time based on whichever sensor drove furthest off the table
-        float reverse_time = (left_time > right_time) ? left_time : right_time;
-        reverse_time += 50; // Extra padding to clear the edge safely
-
         // Pull back onto the table safely
         reverseTimer.clear();
-        while (reverseTimer.time(msec) < reverse_time) {
+        while (reverseTimer.time(msec) < fabs(error) + 100) { // Add a buffer to ensure both sensors are back on the table
             motors.spin(reverse, 30, percent);
         }
         motors.stop(brake);
@@ -563,6 +563,7 @@ void turn_heading(float targetHeading, collisionMonitor &collision_monitor)
     float peakRotationalAcceleration = 0; 
     float timePrev = 0;
 
+    bool settled = false; // Flag to indicate if the robot has settled after the turn
 
     // Perform movement until error is acceptable
     while (fabs(error) > acceptableError)
@@ -591,7 +592,7 @@ void turn_heading(float targetHeading, collisionMonitor &collision_monitor)
         task:: sleep(20); // Small delay to prevent CPU hogging
 
         //check for collision
-        if (collision_monitor.detectCollisionLin()){
+        if (collision_monitor.detectCollisionAng()){
             motors.stop(brake);
             while (true){
                 Brain.Screen.clearScreen();
@@ -626,6 +627,13 @@ void turn_heading(float targetHeading, collisionMonitor &collision_monitor)
         gx = gxNew;
         gy = gyNew;
         gz = gzNew;
+
+        // Check if the robot has settled after the turn
+        if (fabs(error) <= acceptableError && !settled) {
+            // Wait for a short duration to ensure the robot has settled
+            task::sleep(200); // Adjust this duration as needed
+            settled = true;
+        }
     }
     motors.stop();
     
@@ -663,6 +671,8 @@ void turn_heading(float targetHeading)
 
     task::sleep(20); // Allow time or timer to become not zero for first loop iteration
 
+    bool settled = false; // Flag to indicate if the robot has settled after the turn
+
     // Perform movement until error is acceptable
     while (fabs(error) > acceptableError)
     {
@@ -688,6 +698,13 @@ void turn_heading(float targetHeading)
             LM.spin(reverse, motorSpeed, percent);
         }
         task:: sleep(20); // Small delay to prevent CPU hogging
+
+        // Check if the robot has settled after the turn
+        if (fabs(error) <= acceptableError && !settled) {
+            // Wait for a short duration to ensure the robot has settled
+            task::sleep(200); // Adjust this duration as needed
+            settled = true;
+        }
     }
     motors.stop();
     return;
@@ -797,7 +814,7 @@ void Manual_Control() {
         controlClaw(motor2, collect, release);
         controlClaw(motor5, collect, release);
 
-        wait(10, msec);
+        task::sleep(10);
     }
 }
 // Matt -------------------------------------------------------------------------------------------
