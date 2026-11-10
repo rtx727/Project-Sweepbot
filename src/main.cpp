@@ -692,7 +692,7 @@ void automaticCleaning() {
             float measuredMM = (
                 LM.position(degrees) - leftStart +
                 RM.position(degrees) - rightStart
-            ) / 2.0 * 200.0 / 360.0 + 140;
+            ) / 2.0 * 200.0 / 360.0 + 100;
 
             // Leave 10 mm before the measured side stop for the last lane.
             float widthMM = fmax(0.0, measuredMM - 10.0);
