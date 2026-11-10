@@ -1,3 +1,58 @@
+#pragma region VEXcode Generated Robot Configuration
+// Make sure all required headers are included.
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdbool.h>
+#include <math.h>
+#include <string.h>
+
+
+#include "vex.h"
+
+using namespace vex;
+
+// Brain should be defined by default
+brain Brain;
+
+
+// START IQ MACROS
+#define waitUntil(condition)                                                   \
+  do {                                                                         \
+    wait(5, msec);                                                             \
+  } while (!(condition))
+
+#define repeat(iterations)                                                     \
+  for (int iterator = 0; iterator < iterations; iterator++)
+// END IQ MACROS
+
+
+// Robot configuration code.
+inertial BrainInertial = inertial();
+
+
+// generating and setting random seed
+void initializeRandomSeed(){
+  wait(100,msec);
+  double xAxis = BrainInertial.acceleration(xaxis) * 1000;
+  double yAxis = BrainInertial.acceleration(yaxis) * 1000;
+  double zAxis = BrainInertial.acceleration(zaxis) * 1000;
+  // Combine these values into a single integer
+  int seed = int(
+    xAxis + yAxis + zAxis
+  );
+  // Set the seed
+  srand(seed); 
+}
+
+
+
+void vexcodeInit() {
+
+  // Initializing random seed.
+  initializeRandomSeed(); 
+}
+
+#pragma endregion VEXcode Generated Robot Configuration
 /*----------------------------------------------------------------------------*/
 /*                                                                            */
 /*    Module:       main.cpp                                                  */
@@ -9,10 +64,10 @@
 #include "vex.h"
 
 using namespace vex;
-using namespace std;
+// (removed "using namespace std;" — it clashes with vex::forward / vex::distance)
 
 // A global instance of vex::brain used for printing to the IQ2 brain screen
-vex::brain Brain;
+//vex::brain Brain;
 
 // define your global instances of motors and other devices here
 motor RM(PORT12, bool(reverse));
@@ -22,17 +77,13 @@ distance DISTANCE(PORT1); //left side cliff sensor
 motor_group motors(RM, LM);
 optical OPTICAL(PORT6); //right side cliff sensor
 controller CONTROLLER;
-inertial BrainInertial = inertial();
+//inertial BrainInertial = inertial();
 touchled TOUCHLED(PORT8);
 motor motor2(PORT2, true); //claw left
 motor motor5(PORT5, false); //claw right
 
-
-//Global variables ----- -                ------------------------------------------------------------------------------ TO BE REMOVED LATER
-const float MAX_SPEED = 50.0;
-
-
 // Structs
+const double MAX_SPEED = 50.0;
 
 // Struct to hold PID controller values and perform calculations
 struct PIDcontroller
@@ -101,7 +152,16 @@ struct PIDcontroller
 
         // Make output term
         this->output = fabs(porportionalTerm + integralTerm + derivativeTerm);
+        //Slew Output to prevent sudden changes in motor speed for first half a second
+        float slewFactor = 1.0; // Default to no slew
+        if (this->PIDtimer.time(msec) < 500)
+        {
+            // Linear ramp: 0 -> 1 over the first 500 ms
+            slewFactor = this->PIDtimer.time(msec) / 500.0;
+        }
 
+        //Apply slew factor to output
+        this->output = this->output * slewFactor;
         // Max motor speed is 100%
         if (this->output > 100)
         {
@@ -175,6 +235,9 @@ void find_absolute_heading();
 void calibrateSensors();
 
 void drivingHeading();
+bool driveDistance(float targetDistance, float targetSpeed);
+void automaticCleaning();
+float pauseForObstacle();
 
 // Test functions----------------------------------------------------------------------------------
 void testPIDTurning()
@@ -221,27 +284,8 @@ void handle_TOUCLED(bool &end_autonomous, color &TOUCLED_COLOR)
 // -------------------------------------- MAIN ---------------------------------------------------
 int main()
 {
-    // bool end_autonomous = false;
-    color TOUCLED_COLOR = color::green;
-
-    // Calibration
-    calibrateSensors();
-    Brain.Screen.printAt(2, 30, "Hello IQ2");
-    Brain.Screen.clearScreen();
-
-    // Cosntruct robot object
-    // robot table_cleaner;
-
-    // Setup events
-    // TOUCHLED.pressed(handle_TOUCLED,end_autonomous, TOUCLED_COLOR));
-    TOUCHLED.setColor(color::red); // Start autonomous program
-
-    // Tests
-    test_find_absolute_heading(); // call a PID that is more simple with no ki
-    //testPIDTurning();
-
-    // End program
-    // Brain.programStop();
+  automaticCleaning();
+  return 0;
 }
 
 // Function definitions
@@ -269,7 +313,10 @@ void find_absolute_heading() {
     float left_time = 0;
     float right_time = 0;
     
-    const float ACCEPTABLE_TIME_ERROR = 50; // Milliseconds (Note: check if your PID output scales well to this)
+    // 100 ms -> ~1.4 deg correction, just above turn_heading's 1 deg tolerance
+    const float ACCEPTABLE_TIME_ERROR = 100; // Milliseconds
+    const int MAX_ATTEMPTS = 5; // never loop forever
+    int attempts = 0;
     const float SENSOR_HEIGHT = 50; 
     float error = 0; //In milliseconds
 
@@ -281,6 +328,7 @@ void find_absolute_heading() {
     PIDcontroller turnPID = PIDcontroller(kp, ki, kd, integralZone);
 
     do {
+        attempts++;
         // Reset flags and variables for this attempt
         bool left_edge_found = false;
         bool right_edge_found = false;
@@ -320,11 +368,13 @@ void find_absolute_heading() {
         motors.stop(brake);
         task::sleep(100); // Allow physical momentum to settle
 
-
+        // Calculate recovery time based on whichever sensor drove furthest off the table
+        //float reverse_time = (left_time > right_time) ? left_time : right_time;
+        //reverse_time += 15; // Extra padding to clear the edge safely
+        float reverse_time = 300;
         // Pull back onto the table safely
         reverseTimer.clear();
-        //Add a buffer of 100 ms to bring both sensors back on table
-        while (reverseTimer.time(msec) < fabs(error) + 100) { 
+        while (reverseTimer.time(msec) < reverse_time) {
             motors.spin(reverse, 30, percent);
         }
         motors.stop(brake);
@@ -335,7 +385,6 @@ void find_absolute_heading() {
         // If error is outside acceptable limits, execute correction turn
         if (fabs(error) > ACCEPTABLE_TIME_ERROR) {
             //float turnAmount = turnPID.calculatePID(error); //Degrees turned (MAX output is 100)
-            //Tuned number of 0.14 to make the right amount of turn based on error
             float turnAmount = fabs(error)*.014;
 
             // If error > 0, left_time was larger, right sensor hit the edge first
@@ -370,7 +419,7 @@ void find_absolute_heading() {
         Brain.Screen.setCursor(3, 1);
         Brain.Screen.print("Error: %.2f", error);
 
-    } while (fabs(error) > ACCEPTABLE_TIME_ERROR); // FIX: Repeat while error is LARGER than acceptable bounds
+    } while (fabs(error) > ACCEPTABLE_TIME_ERROR && attempts < MAX_ATTEMPTS);
 
     Brain.Screen.setCursor(4, 1);
     Brain.Screen.print("Absolute Heading found");
@@ -383,58 +432,50 @@ void find_absolute_heading() {
 // Outputs: None
 void turn_heading(float targetHeading)
 {
-    // Stop all motors
     motors.stop(brake);
-
-    // Set current heading to 0;
     BrainInertial.resetRotation();
-    float error = targetHeading;  // Initial error is just heading
-    float acceptableError = 0.25; // degrees
-    float currentHeading = 0;
-    float motorSpeed = 0; // In percentage
 
-    // Construct PID controller object
-    float Kp = 0.8;
-    float Ki = 0.00028;
-    float Kd = 0.8;
+    const float ACCEPTABLE_ERROR = 1.0;  // degrees
+    const float MIN_SPEED = 6;           // %, below this the motors can't overcome friction (tune)
+    const float MAX_TURN_SPEED = 50;     // %
+    const int   SETTLE_COUNT = 5;        // must stay in range 5 loops (~100 ms) in a row
+    const float TIMEOUT_MS = 3000;       // never get stuck here
 
-    //Changing Ki based on error
-    const float A = 0.15;   // Controls the steepness of the curve
-    const float B = 3.5;    // Prevents divide-by-zero, dampens the micro-end spike
-    const float C = 0.0005; // The minimum Ki baseline used for big turns
-    //Ki = (A / (fabs(error) + B)) + C;
+    // Ki = 0: calculatePID returns a magnitude only, so an integral term can't be signed correctly
+    PIDcontroller turnPID(0.8, 0.0, 0.8, 90);
+    timer turnTimer;
+    turnTimer.clear();
+    int inRange = 0;
 
-    float integralZone = 90; //only apply Ki in this zone (degrees of a turn)
-    PIDcontroller turnPID = PIDcontroller(Kp, Ki, Kd, integralZone);
-
-    // Perform movement until error is acceptable
-    while (fabs(error) > acceptableError)
+    while (turnTimer.time(msec) < TIMEOUT_MS)
     {
-        // continuously find current heading and error
-        currentHeading = BrainInertial.rotation(degrees);
-        error = targetHeading - currentHeading;
+        float error = targetHeading - BrainInertial.rotation(degrees);
         Brain.Screen.setCursor(1, 1);
-        Brain.Screen.print("%f", currentHeading);
-        Brain.Screen.setCursor(2, 1);
-        Brain.Screen.print("%f", error);
+        Brain.Screen.print("Turn err: %.2f   ", error);
 
-        // Determine which direction to turn
-        if (error > 0)
-        {                                             // right turn
-            motorSpeed = turnPID.calculatePID(error); // Pass in error to PIDcontroller for output
-            RM.spin(reverse, motorSpeed, percent);
-            LM.spin(forward, motorSpeed, percent);
+        if (fabs(error) < ACCEPTABLE_ERROR)
+        {
+            motors.stop(brake);
+            if (++inRange >= SETTLE_COUNT) break;
         }
         else
-        {                                             // left turn
-            motorSpeed = turnPID.calculatePID(error); // Pass in error to PIDcontroller for output
-            RM.spin(forward, motorSpeed, percent);
-            LM.spin(reverse, motorSpeed, percent);
+        {
+            inRange = 0;
+            float speed = turnPID.calculatePID(error);
+            if (speed < MIN_SPEED) speed = MIN_SPEED;
+            if (speed > MAX_TURN_SPEED) speed = MAX_TURN_SPEED;
+
+            if (error > 0) { // right turn
+                LM.spin(forward, speed, percent);
+                RM.spin(reverse, speed, percent);
+            } else {         // left turn
+                LM.spin(reverse, speed, percent);
+                RM.spin(forward, speed, percent);
+            }
         }
-        task:: sleep(20); // Small delay to prevent CPU hogging
+        task::sleep(20);
     }
-    motors.stop();
-    return;
+    motors.stop(brake);
 }
 
 // Riley ------------------------------------------------------------------------------------------
@@ -467,7 +508,7 @@ void drivingHeading()
       Brain.Screen.setCursor(1,1);
     
       // Safety timeout -- adjust for your table dimensions
-      while (DISTANCE.objectDistance(mm)<50 && !BUMPER.pressing()){
+      while (DISTANCE.objectDistance(mm)<50 && !BUMPER.pressing() && OPTICAL.isNearObject()){// added optical detection
         // Continuous inertial heading feedback
 
         float currentHeading = BrainInertial.rotation(degrees);
@@ -506,7 +547,6 @@ void drivingHeading()
 }
 // Richard ----------------------------------------------------------------------------------------
 void driveMotor(motor &m, double speed) { //mannual control
-    
     if (speed > MAX_SPEED) {
         speed = MAX_SPEED;
     } else if (speed < -MAX_SPEED) {
@@ -521,7 +561,7 @@ void driveMotor(motor &m, double speed) { //mannual control
 }
 
 bool controlClaw(motor &m, bool open) {
-  double target = open ? 120 : 0;
+  double target = open ? 30 : 0;
   m.spinToPosition(target, degrees,true);
   bool reached = fabs(m.position(degrees) - target) <= 3;
   if (reached) {
@@ -579,25 +619,180 @@ void Manual_Control() {
 
     controlClaw(motor2, left_release);
     controlClaw(motor5, right_release);
-
+    
     wait(10, msec);
   }
   motors.stop();
 }
+
+// Stops everything and shows which step failed (instead of exiting silently)
+void failStop(const char* msg)
+{
+    motors.stop(brake);
+    motor2.stop(hold);
+    motor5.stop(hold);
+    TOUCHLED.setColor(color::red);
+    Brain.Screen.clearScreen();
+    Brain.Screen.setCursor(1, 1);
+    Brain.Screen.print("FAIL:");
+    Brain.Screen.setCursor(2, 1);
+    Brain.Screen.print("%s", msg);
+}
+
+void automaticCleaning() {
+    const float MAX_STEP_MM = 80;
+    const float BACK_MM = 50;
+    int rows = 0;
+    float stepMM = 0;
+
+    motors.stop(brake);
+    Brain.Screen.clearScreen();
+    Brain.Screen.setCursor(1, 1);
+    Brain.Screen.print("Place robot, tap Touch");
+    while (TOUCHLED.pressing()) wait(10, msec);
+    while (!TOUCHLED.pressing()) wait(10, msec);
+    while (TOUCHLED.pressing()) wait(10, msec);
+
+    motor2.setPosition(0, degrees);
+    motor5.setPosition(0, degrees);
+    motor2.setVelocity(15, percent);
+    motor5.setVelocity(15, percent);
+    motor2.setTimeout(3, seconds);
+    motor5.setTimeout(3, seconds);
+    motor2.stop(hold);
+    motor5.stop(hold);
+    wait(300, msec);
+    calibrateSensors();
+
+    for (int row = 0; ; row++) {
+        drivingHeading();
+        if (rows > 0 && row == rows - 1) break;
+
+        if (!driveDistance(-BACK_MM, 15)) { failStop("back up"); return; }
+        if (row == 0) find_absolute_heading();
+
+        float angle = row % 2 == 0 ? 90 : -90;
+        motor &claw = angle < 0? motor2 : motor5;
+        if (!controlClaw(claw, true)) { failStop("claw open"); return; }
+        turn_heading(angle);
+        if (!controlClaw(claw, false)) { failStop("claw close"); return; }
+        wait(200, msec);
+
+        if (row == 0) {
+            // First right turn: measure the available sideways travel.
+            float leftStart = LM.position(degrees);
+            float rightStart = RM.position(degrees);
+            drivingHeading();
+            float measuredMM = (
+                LM.position(degrees) - leftStart +
+                RM.position(degrees) - rightStart
+            ) / 2.0 * 200.0 / 360.0 + 100;
+
+            // Leave 10 mm before the measured side stop for the last lane.
+            float widthMM = fmax(0.0, measuredMM - 10.0);
+            rows = (int)ceil(widthMM / MAX_STEP_MM) + 1;
+            if (rows == 1) break;
+            stepMM = widthMM / (rows - 1);
+
+            // Return directly to lane two, not all the way to lane one.
+            if (!driveDistance(-(measuredMM - stepMM), 15)) { failStop("return lane 2"); return; }
+        } else {
+            if (!driveDistance(stepMM, 15)) { failStop("step over"); return; }
+        }
+        if (!controlClaw(claw, true)) { failStop("claw open"); return; }
+        turn_heading(angle);
+        if (!controlClaw(claw, false)) { failStop("claw close"); return; }
+        wait(200, msec);
+    }
+
+    motors.stop(brake);
+    motor2.stop(hold);
+    motor5.stop(hold);
+    Brain.Screen.clearScreen();
+    Brain.Screen.setCursor(1, 1);
+    Brain.Screen.print("Rows finished: %d", rows);
+}
+
+float pauseForObstacle() {
+    if (!BUMPER.pressing()) return 0;
+
+    motors.stop(brake);
+    timer pauseTimer;
+    pauseTimer.reset();
+    TOUCHLED.setColor(color::red);
+    Brain.Screen.clearScreen();
+    Brain.Screen.setCursor(1, 1);
+    Brain.Screen.print("Remove obstacle");
+    Brain.Screen.setCursor(2, 1);
+    Brain.Screen.print("Then tap Touch");
+
+    // Require the obstacle to be removed, then a NEW Touch press and release.
+    while (true) {
+        while (BUMPER.pressing() || TOUCHLED.pressing()) wait(20, msec);
+        while (!TOUCHLED.pressing() && !BUMPER.pressing()) wait(20, msec);
+        if (BUMPER.pressing()) continue;
+        while (TOUCHLED.pressing() && !BUMPER.pressing()) wait(20, msec);
+        if (!BUMPER.pressing()) break;
+    }
+
+    TOUCHLED.setColor(color::green);
+    return pauseTimer.time(msec);
+}
+
+
+bool driveDistance(float targetDistance, float targetSpeed) {
+    motors.stop(brake);
+    if (targetSpeed <= 0 || targetSpeed > MAX_SPEED) return false;
+
+    float targetDegree = fabs(targetDistance) / 200.0 * 360.0;
+    float leftStart = LM.position(degrees);
+    float rightStart = RM.position(degrees);
+    float travelled = 0;
+    float pausedMS = 0;
+    float timeoutMS = 5000 + fabs(targetDistance) * 50;
+    directionType direction = targetDistance >= 0 ? forward : reverse;
+    timer moveTimer;
+    moveTimer.reset();
+
+    while (travelled < targetDegree &&
+           moveTimer.time(msec) - pausedMS < timeoutMS) {
+        pausedMS += pauseForObstacle();
+        motors.spin(direction, targetSpeed, percent);
+        wait(10, msec);
+        travelled = (
+            fabs(LM.position(degrees) - leftStart) +
+            fabs(RM.position(degrees) - rightStart)
+        ) / 2.0;
+    }
+
+    motors.stop(brake);
+    if (travelled < targetDegree) {
+        Brain.Screen.clearScreen();
+        Brain.Screen.setCursor(1, 1);
+        Brain.Screen.print("Move timeout");
+    }
+    return travelled >= targetDegree;
+}
 // Matt -------------------------------------------------------------------------------------------
-void driveDistance(float targetDistance, float targetSpeed){
+/*bool driveDistance(float targetDistance, float targetSpeed){
   const float wheelCirc = 200.0;//In mm
+  motors.stop(brake);
 
   float targetDegree = targetDistance / wheelCirc * 360.0;
 
-  motors.resetPosition();
-  motors.spin(forward, targetSpeed, percent);
-
-  while(motors.position(degrees) < targetDegree){ //assume it won't drive back, only forward
-    wait(10, msec);
+  //float leftStart = LM.position(degrees); //Modified by Richard, so that it can drive forward or backward
+  //float rightStart = RM.position(degrees);
+  float travelled = 0;
+  directionType direction = targetDistance >= 0 ? forward : reverse;
+  timer moveTimer;
+  moveTimer.reset();
+  motors.spin(direction,targetSpeed,percent);
+  while(travelled<targetDistance){
+    wait(10,msec);
   }
   motors.stop(brake);
-}
+  return true;
+}*/
 
 void test_edge_detection(){
   for(int i = 0; i < 4; i++){
