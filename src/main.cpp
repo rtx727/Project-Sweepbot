@@ -152,7 +152,21 @@ struct PIDcontroller
 
         // Make output term
         this->output = fabs(porportionalTerm + integralTerm + derivativeTerm);
+        //Slew Output to prevent sudden changes in motor speed for first half a second
+        float slewFactor = 1.0; // Default to no slew
+        if (this->PIDtimer.time(msec) < 500)
+        {
+            // Calculate the number of 25ms intervals in the first 500ms
+            float timeDivision = this->PIDtimer.time(msec) / 25.0; // 0 to 20
+            for (int i = 0; i<timeDivision; i++){
+                //Output will be full output by half a second
+                //Scaled up by 5% each time
+                slewFactor = slewFactor * (0.05 + 0.05*i); // 0.05, 0.1, 0.15, ... 1.0
+            }
+        }
 
+        //Apply slew factor to output
+        this->output = this->output * slewFactor;
         // Max motor speed is 100%
         if (this->output > 100)
         {
@@ -435,14 +449,10 @@ void turn_heading(float targetHeading)
     float Kd = 0.8;
 
     //Changing Ki based on error
-    const float A = 0.15;   // Controls the steepness of the curve
-    const float B = 3.5;    // Prevents divide-by-zero, dampens the micro-end spike
-    const float C = 0.0005; // The minimum Ki baseline used for big turns
-    //Ki = (A / (fabs(error) + B)) + C;
 
     float integralZone = 90; //only apply Ki in this zone (degrees of a turn)
     PIDcontroller turnPID = PIDcontroller(Kp, Ki, Kd, integralZone);
-
+    bool settled = false;
     // Perform movement until error is acceptable
     while (fabs(error) > acceptableError)
     {
@@ -457,23 +467,32 @@ void turn_heading(float targetHeading)
         // Determine which direction to turn
         if (error > 0)
         {                                             // right turn
-            motorSpeed = turnPID.calculatePID(error) * 0.5f; // Pass in error to PIDcontroller for output
-            if(motorSpeed > 25.0f){
-              motorSpeed = 25.0f;
-            }
+            motorSpeed = turnPID.calculatePID(error); // Pass in error to PIDcontroller for output
+
             RM.spin(reverse, motorSpeed, percent);
             LM.spin(forward, motorSpeed, percent);
         }
         else
         {                                             // left turn
-            motorSpeed = turnPID.calculatePID(error) * 0.5f; // Pass in error to PIDcontroller for output
-            if(motorSpeed > 25.0f){
-              motorSpeed = 25.0f;
-            }            
+            motorSpeed = turnPID.calculatePID(error); // Pass in error to PIDcontroller for output
+
             RM.spin(forward, motorSpeed, percent);
             LM.spin(reverse, motorSpeed, percent);
         }
         task:: sleep(20); // Small delay to prevent CPU hogging
+
+        //Calculate rotational acceleration (gyroscope)
+        float gxNew = BrainInertial.gyroRate(xaxis, dps);
+        float gyNew = BrainInertial.gyroRate(yaxis, dps);
+        float gzNew = BrainInertial.gyroRate(zaxis, dps);
+        float rotationRate = sqrt(gxNew * gxNew + gyNew * gyNew + gzNew * gzNew);
+
+        // Check if the robot has settled after the turn
+        if (fabs(error) <= acceptableError && !settled && rotationRate < 1) {
+            // Wait for a short duration to ensure the robot has settled
+            task::sleep(200); // Adjust this duration as needed
+            settled = true;
+        }
     }
     motors.stop();
     return;
@@ -562,7 +581,7 @@ void driveMotor(motor &m, double speed) { //mannual control
 }
 
 bool controlClaw(motor &m, bool open) {
-  double target = open ? 120 : 0;
+  double target = open ? 30 : 0;
   m.spinToPosition(target, degrees,true);
   bool reached = fabs(m.position(degrees) - target) <= 3;
   if (reached) {
@@ -620,7 +639,7 @@ void Manual_Control() {
 
     controlClaw(motor2, left_release);
     controlClaw(motor5, right_release);
-
+    
     wait(10, msec);
   }
   motors.stop();
@@ -659,7 +678,10 @@ void automaticCleaning() {
         if (row == 0) find_absolute_heading();
 
         float angle = row % 2 == 0 ? 90 : -90;
+        motor &claw = angle < 0? motor2 : motor5;
+        if (!controlClaw(claw, true)) return;
         turn_heading(angle);
+        if (!controlClaw(claw, false)) return;
         wait(200, msec);
 
         if (row == 0) {
@@ -670,7 +692,7 @@ void automaticCleaning() {
             float measuredMM = (
                 LM.position(degrees) - leftStart +
                 RM.position(degrees) - rightStart
-            ) / 2.0 * 200.0 / 360.0;
+            ) / 2.0 * 200.0 / 360.0 + 140;
 
             // Leave 10 mm before the measured side stop for the last lane.
             float widthMM = fmax(0.0, measuredMM - 10.0);
@@ -683,8 +705,9 @@ void automaticCleaning() {
         } else {
             if (!driveDistance(stepMM, 15)) return;
         }
-
+        if (!controlClaw(claw, true)) return;
         turn_heading(angle);
+        if (!controlClaw(claw, false)) return;
         wait(200, msec);
     }
 
