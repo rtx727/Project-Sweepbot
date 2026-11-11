@@ -571,10 +571,6 @@ void turn_heading(float targetHeading)
 // Params: Velocity, heading
 // Purpose: Drives forward using gyro sensor
 // Outputs: None
-void drivingHeading()
-{
-    drivingHeading(BrainInertial.rotation(degrees));
-}
 
 void drivingHeading(float targetHeading, float expectedMM, bool perimeter)
 {
@@ -744,7 +740,7 @@ void automaticCleaning() {
     TOUCHLED.setColor(color::green);
 
     // Find the first edge and keep its normal as the reference for the run.
-    drivingHeading();
+    drivingHeading(BrainInertial.rotation(degrees));
     if (cleaningFailed) return;
     find_absolute_heading();
     if (cleaningFailed) return;
@@ -902,6 +898,6 @@ void test_edge_detection(){
 
     turn_heading(90);
 
-    drivingHeading();
+    drivingHeading(BrainInertial.rotation(degrees));
   }
 }
