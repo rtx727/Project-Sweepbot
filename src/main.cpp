@@ -605,6 +605,7 @@ void turn_heading(float targetHeading, collisionMonitor &collision_monitor)
         float gxNew = BrainInertial.gyroRate(xaxis, dps);
         float gyNew = BrainInertial.gyroRate(yaxis, dps);
         float gzNew = BrainInertial.gyroRate(zaxis, dps);
+        float rotationRate = sqrt(gxNew * gxNew + gyNew * gyNew + gzNew * gzNew);
 
         float dgx = gxNew - gx;
         float dgy = gyNew - gy;
@@ -629,7 +630,7 @@ void turn_heading(float targetHeading, collisionMonitor &collision_monitor)
         gz = gzNew;
 
         // Check if the robot has settled after the turn
-        if (fabs(error) <= acceptableError && !settled) {
+        if (fabs(error) <= acceptableError && !settled && rotationRate < 1) { // Added condition to check if rotation rate is < 1dps
             // Wait for a short duration to ensure the robot has settled
             task::sleep(200); // Adjust this duration as needed
             settled = true;
