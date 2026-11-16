@@ -826,7 +826,46 @@ struct robot
         return travelled >= targetDegree;
     }
 
-    
+    // Purpose: Moves the seesaw collector (only one side can touch the table at a time)
+    // Params: side = -1 left side down, 0 level (both sides up), +1 right side down
+    // Setup: at the start the user lowers the collector onto its RIGHT side and
+    //        COLLECTOR.resetPosition() is called, so 0 deg = right down,
+    //        19 deg = level, 38 deg = left down (measured range is +-19 deg from level)
+    // Outputs: true if it got there (going down, touching the table early counts)
+    bool setCollector(int side)
+    {
+        if (cleaningFailed)
+            return false;
+
+        const float TILT_DEG = 19.0;    // level -> one side touching the table
+        const int RIGHT_TO_LEFT = 1;    // set to -1 if a positive motor turn pushes the right side DOWN
+        const float target = RIGHT_TO_LEFT * TILT_DEG * (1 - side); // +1 -> 0, 0 -> 19, -1 -> 38
+
+        motors.stop(brake);
+        COLLECTOR.setVelocity(30, percent);
+        COLLECTOR.setMaxTorque(50, percent); // enough to touch down, not enough to lift the robot
+        COLLECTOR.spinToPosition(target, degrees, false);
+
+        timer collectorTimer;
+        collectorTimer.clear();
+        while (!COLLECTOR.isDone() && collectorTimer.time(msec) < 1500)
+        {
+            // Going down: if it already rests on the table it stops moving, that's fine
+            if (side != 0 && collectorTimer.time(msec) > 300 && fabs(COLLECTOR.velocity(rpm)) < 2)
+                break;
+            wait(10, msec);
+        }
+        COLLECTOR.stop(hold);
+
+        // Going up must really reach level, otherwise it drags during turns
+        if (side == 0 && fabs(COLLECTOR.position(degrees) - target) > 4)
+        {
+            stopCleaning("Collector not level");
+            return false;
+        }
+        return true;
+    }
+
 float pauseForObstacle()
 {
     if (!BUMPER.pressing())
@@ -997,43 +1036,3 @@ void Manual_Control()
 }
 
 // Matt -------------------------------------------------------------------------------------------
-
-// Purpose: Moves the seesaw collector (only one side can touch the table at a time)
-// Params: side = -1 left side down, 0 level (both sides up), +1 right side down
-// Setup: at the start the user lowers the collector onto its RIGHT side and
-//        COLLECTOR.resetPosition() is called, so 0 deg = right down,
-//        19 deg = level, 38 deg = left down (measured range is +-19 deg from level)
-// Outputs: true if it got there (going down, touching the table early counts)
-bool setCollector(int side)
-{
-    if (cleaningFailed)
-        return false;
-
-    const float TILT_DEG = 19.0;    // level -> one side touching the table
-    const int RIGHT_TO_LEFT = -1;    // set to -1 if a positive motor turn pushes the right side DOWN
-    const float target = RIGHT_TO_LEFT * TILT_DEG * (1 - side); // +1 -> 0, 0 -> 19, -1 -> 38
-
-    motors.stop(brake);
-    COLLECTOR.setVelocity(30, percent);
-    COLLECTOR.setMaxTorque(50, percent); // enough to touch down, not enough to lift the robot
-    COLLECTOR.spinToPosition(target, degrees, false);
-
-    timer collectorTimer;
-    collectorTimer.clear();
-    while (!COLLECTOR.isDone() && collectorTimer.time(msec) < 1500)
-    {
-        // Going down: if it already rests on the table it stops moving, that's fine
-        if (side != 0 && collectorTimer.time(msec) > 300 && fabs(COLLECTOR.velocity(rpm)) < 2)
-            break;
-        wait(10, msec);
-    }
-    COLLECTOR.stop(hold);
-
-    // Going up must really reach level, otherwise it drags during turns
-    if (side == 0 && fabs(COLLECTOR.position(degrees) - target) > 4)
-    {
-        stopCleaning("Collector not level");
-        return false;
-    }
-    return true;
-}
