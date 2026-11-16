@@ -288,7 +288,7 @@ struct robot
         float left_time = 0;
         float right_time = 0;
 
-        const float ACCEPTABLE_TIME_ERROR = 50; // Milliseconds at the 15% probing speed
+        const float ACCEPTABLE_TIME_ERROR = 80; // Milliseconds at the 15% probing speed
         const float SENSOR_HEIGHT = 50;
         float error = 0; // In milliseconds
 
@@ -442,6 +442,16 @@ struct robot
         motors.stop(brake);
         if (cleaningFailed)
             return;
+
+        // Collector follows the turn direction (straight driving leaves it as it is):
+        //   right turn -> LEFT side down, left turn -> RIGHT side down.
+        // Small correction turns (squaring up to an edge, side corrections) don't move it.
+        const float COLLECTOR_TURN_DEG = 20.0;
+        if (fabs(targetHeading) >= COLLECTOR_TURN_DEG)
+        {
+            if (!setCollector(targetHeading > 0 ? -1 : 1))
+                return;
+        }
 
         float error = targetHeading; // Initial error is just heading
         targetHeading += BrainInertial.rotation(degrees);
@@ -660,7 +670,9 @@ struct robot
         motors.stop(brake);
         Brain.Screen.clearScreen();
         Brain.Screen.setCursor(1, 1);
-        Brain.Screen.print("Place robot, collector RIGHT down, tap Touch");
+        Brain.Screen.print("Collector RIGHT down");
+        Brain.Screen.setCursor(2, 1);
+        Brain.Screen.print("then tap Touch");
         while (TOUCHLED.pressing())
             wait(10, msec);
         while (!TOUCHLED.pressing())
@@ -830,16 +842,16 @@ struct robot
     // Params: side = -1 left side down, 0 level (both sides up), +1 right side down
     // Setup: at the start the user lowers the collector onto its RIGHT side and
     //        COLLECTOR.resetPosition() is called, so 0 deg = right down,
-    //        19 deg = level, 38 deg = left down (measured range is +-19 deg from level)
+    //        9.5 deg = level, 19 deg = right down (measured range is +-9.5 deg from level)
     // Outputs: true if it got there (going down, touching the table early counts)
     bool setCollector(int side)
     {
         if (cleaningFailed)
             return false;
 
-        const float TILT_DEG = 19.0;    // level -> one side touching the table
-        const int RIGHT_TO_LEFT = 1;    // set to -1 if a positive motor turn pushes the right side DOWN
-        const float target = RIGHT_TO_LEFT * TILT_DEG * (1 - side); // +1 -> 0, 0 -> 19, -1 -> 38
+        const float TILT_DEG = 9.5;    // level -> one side touching the table
+        const int RIGHT_TO_LEFT = -1;    // set to -1 if a positive motor turn pushes the right side DOWN
+        const float target = RIGHT_TO_LEFT * TILT_DEG * (1 - side); // +1 -> 0, 0 -> -9.5, -1 -> -19
 
         motors.stop(brake);
         COLLECTOR.setVelocity(30, percent);
