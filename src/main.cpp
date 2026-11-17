@@ -266,7 +266,7 @@ struct robot
         Brain.Screen.setCursor(1, 1);
         Brain.Screen.print("%s", message);
     }
-
+// Yunhao -----------------------------------------------------------------------------------------
     // Purpose: Finds the absolute heading of the robot
     // Outputs: None
     void find_absolute_heading()
@@ -274,7 +274,7 @@ struct robot
         if (cleaningFailed)
             return;
         // Start each alignment attempt with both front sensors over the table.
-        if (!DISTANCE.isObjectDetected() || DISTANCE.objectDistance(mm) >= 50 ||
+        if (!DISTANCE.isObjectDetected() || DISTANCE.objectDistance(mm) >= 100 ||
             !OPTICAL.isNearObject())
         {
             if (!driveDistance(-BACK_MM, 15))
@@ -288,8 +288,8 @@ struct robot
         float left_time = 0;
         float right_time = 0;
 
-        const float ACCEPTABLE_TIME_ERROR = 80; // Milliseconds at the 15% probing speed
-        const float SENSOR_HEIGHT = 50;
+        const float ACCEPTABLE_TIME_ERROR = 150; // Milliseconds at the 15% probing speed
+        const float SENSOR_HEIGHT = 100;
         float error = 0; // In milliseconds
 
         // Instantiate PID outside the loop so it retains memory (Integral/Derivative)
@@ -324,7 +324,7 @@ struct robot
                 pausedMS += pauseForObstacle();
                 const float travelledMM = driveEncoderMM() - startMM;
                 if (leftTimer.time(msec) - pausedMS > 65000 || travelledMM > 4000 ||
-                    (firstEdgeMM >= 0 && travelledMM - firstEdgeMM > 45))
+                    (firstEdgeMM >= 0 && travelledMM - firstEdgeMM > 67))
                 {
                     stopCleaning("Alignment edge mismatch");
                     return;
@@ -538,7 +538,7 @@ struct robot
         motors.stop(brake);
         return;
     }
-
+// Riley ------------------------------------------------------------------------------------------
     // Params: Velocity, heading
     // Purpose: Drives forward using gyro sensor
     // Outputs: None
@@ -570,7 +570,8 @@ struct robot
 
         timer driveTimer;
         driveTimer.clear();
-        while (true)
+        bool reachedEdge = false;
+        while (!reachedEdge)
         {
             if (BUMPER.pressing())
             {
@@ -579,7 +580,7 @@ struct robot
                 drivePID.previousTime = drivePID.PIDtimer.time(msec);
             }
 
-            const bool leftOn = DISTANCE.isObjectDetected() && DISTANCE.objectDistance(mm) < 50;
+            const bool leftOn = DISTANCE.isObjectDetected() && DISTANCE.objectDistance(mm) < 100;
             const bool rightOn = OPTICAL.isNearObject();
             const float travelledMM = driveEncoderMM() - startMM;
             const float elapsedMS = driveTimer.time(msec) - pausedMS;
@@ -601,7 +602,7 @@ struct robot
                         return;
 
                     // If the pivot restores both sensors, move a little inward.
-                    if (DISTANCE.isObjectDetected() && DISTANCE.objectDistance(mm) < 50 &&
+                    if (DISTANCE.isObjectDetected() && DISTANCE.objectDistance(mm) < 100 &&
                         OPTICAL.isNearObject())
                     {
                         if (!driveDistance(40, 12))
@@ -626,7 +627,8 @@ struct robot
                     stopCleaning("Unexpected early edge");
                     return;
                 }
-                break;
+                reachedEdge = true;
+                continue; //still need testing
             }
             const float limitMM = expectedMM > 0 ? expectedMM + 120 : 4000;
             if (elapsedMS > 65000 || travelledMM >= limitMM)
@@ -659,7 +661,7 @@ struct robot
         }
         motors.stop(brake);
     }
-
+// Matt -------------------------------------------------------------------------------------------
     void automaticCleaning()
     {
         const float MAX_STEP_MM = 80;
@@ -739,6 +741,7 @@ struct robot
 
         // Keep the original row loop. Each row follows one of two fixed headings.
         float shiftedMM = 0;
+        bool finished = false;
         for (int row = 0; row < rows; ++row)
         {
             const float heading = edgeHeading + 180 + (row % 2) * 180;
@@ -748,21 +751,20 @@ struct robot
             drivingHeading(heading, lengthMM + BACK_MM, false);
             if (cleaningFailed)
                 return;
-
             // Retreat and turn into the next lane.
             if (!driveDistance(-BACK_MM, 15))
                 return;
-            if (row == rows - 1)
-                break;
+            if(row+1< rows){
+                turn_heading(headingError(edgeHeading + 270));
+                if (cleaningFailed)
+                    return;
+                const float startMM = driveEncoderMM();
+                if (!driveDistance((row + 1) * stepMM - shiftedMM, 15))
+                    return;
+                shiftedMM += driveEncoderMM() - startMM;
+                wait(200, msec);
+            }
 
-            turn_heading(headingError(edgeHeading + 270));
-            if (cleaningFailed)
-                return;
-            const float startMM = driveEncoderMM();
-            if (!driveDistance((row + 1) * stepMM - shiftedMM, 15))
-                return;
-            shiftedMM += driveEncoderMM() - startMM;
-            wait(200, msec);
         }
 
         motors.stop(brake);
@@ -771,6 +773,122 @@ struct robot
         Brain.Screen.print("Rows finished: %d", rows);
         Brain.Screen.setCursor(2, 1);
         Brain.Screen.print("Span L %.0f W %.0f", lengthMM, widthMM + 10);
+    }
+        // Purpose: Moves the seesaw collector (only one side can touch the table at a time)
+    // Params: side = -1 left side down, 0 level (both sides up), +1 right side down
+    // Setup: at the start the user lowers the collector onto its RIGHT side and
+    //        COLLECTOR.resetPosition() is called, so 0 deg = right down,
+    //        9.5 deg = level, 19 deg = right down (measured range is +-9.5 deg from level)
+    // Outputs: true if it got there (going down, touching the table early counts)
+    bool setCollector(int side)
+    {
+        if (cleaningFailed)
+            return false;
+
+        const float TILT_DEG = 8.25;
+        const int RIGHT_TO_LEFT = -1;
+        const float TOLERANCE_DEG = 2.0;
+        const float SPEED_PERCENT = 15.0;
+
+        // +1 = right down (0°), 0 = level (-9.5°), -1 = left down (-19°).
+        const float target = RIGHT_TO_LEFT * TILT_DEG * (1 - side);
+
+        motors.stop(brake);
+        COLLECTOR.setMaxTorque(50, percent);
+
+        timer collectorTimer;
+        collectorTimer.clear();
+
+        float error = target - COLLECTOR.position(degrees);
+        bool touchedTable = false;
+
+        while (fabs(error) > TOLERANCE_DEG &&
+            !touchedTable &&
+            collectorTimer.time(msec) < 1500)
+        {
+            // Recheck the direction each time in case the motor overshoots.
+            COLLECTOR.spin(error > 0 ? forward : reverse, SPEED_PERCENT, percent);
+            wait(10, msec);
+
+            error = target - COLLECTOR.position(degrees);
+
+            // Low motor speed after 300 ms can indicate contact while lowering.
+            touchedTable = side != 0 &&
+                        collectorTimer.time(msec) >= 300 &&
+                        fabs(COLLECTOR.velocity(rpm)) < 2;
+        }
+
+        COLLECTOR.stop(hold);
+
+        if (fabs(error) <= TOLERANCE_DEG || touchedTable)
+            return true;
+
+        stopCleaning(side == 0 ? "Collector not level" : "Collector timeout");
+        return false;
+    }
+
+// Richard ----------------------------------------------------------------------------------------
+    void driveMotor(motor &m, double speed)
+    { // mannual control
+        if (speed > MAX_SPEED)
+        {
+            speed = MAX_SPEED;
+        }
+        else if (speed < -MAX_SPEED)
+        {
+            speed = -MAX_SPEED;
+        }
+
+        if (fabs(speed) < 3)
+        {
+            m.stop(brake);
+        }
+        else
+        {
+            m.spin(forward, speed, percent);
+        }
+    }
+
+    void Manual_Control()
+    {
+        while (!CONTROLLER.ButtonEUp.pressing())
+        {
+
+            double forwardInput = CONTROLLER.AxisA.position();
+            double turnInput = CONTROLLER.AxisB.position();
+
+            if (fabs(forwardInput) < 5)
+            {
+                forwardInput = 0;
+            }
+            if (fabs(turnInput) < 5)
+            {
+                turnInput = 0;
+            }
+
+            double leftSpeed = forwardInput + turnInput;
+            double rightSpeed = forwardInput - turnInput;
+
+            double largest = fabs(leftSpeed);
+            if (fabs(rightSpeed) > largest)
+            {
+                largest = fabs(rightSpeed);
+            }
+
+            if (largest > 100)
+            {
+                leftSpeed = leftSpeed / largest * 100;
+                rightSpeed = rightSpeed / largest * 100;
+            }
+            leftSpeed *= MAX_SPEED / 100.0;
+            rightSpeed *= MAX_SPEED / 100.0;
+
+            driveMotor(LM, leftSpeed);
+            driveMotor(RM, rightSpeed);
+
+            wait(10, msec);
+        }
+        motors.stop();
     }
 
     bool driveDistance(float targetDistance, float targetSpeed)
@@ -804,7 +922,7 @@ struct robot
                 drivePID.previousTime = drivePID.PIDtimer.time(msec);
             }
             if (direction == forward &&
-                (!DISTANCE.isObjectDetected() || DISTANCE.objectDistance(mm) >= 50 ||
+                (!DISTANCE.isObjectDetected() || DISTANCE.objectDistance(mm) >= 100 ||
                  !OPTICAL.isNearObject()))
             {
                 stopCleaning("Edge during distance move");
@@ -829,7 +947,7 @@ struct robot
             stopCleaning("Move timeout");
         }
         else if (direction == forward &&
-                 (!DISTANCE.isObjectDetected() || DISTANCE.objectDistance(mm) >= 50 ||
+                 (!DISTANCE.isObjectDetected() || DISTANCE.objectDistance(mm) >= 100 ||
                   !OPTICAL.isNearObject()))
         {
             stopCleaning("Edge during distance move");
@@ -838,45 +956,7 @@ struct robot
         return travelled >= targetDegree;
     }
 
-    // Purpose: Moves the seesaw collector (only one side can touch the table at a time)
-    // Params: side = -1 left side down, 0 level (both sides up), +1 right side down
-    // Setup: at the start the user lowers the collector onto its RIGHT side and
-    //        COLLECTOR.resetPosition() is called, so 0 deg = right down,
-    //        9.5 deg = level, 19 deg = right down (measured range is +-9.5 deg from level)
-    // Outputs: true if it got there (going down, touching the table early counts)
-    bool setCollector(int side)
-    {
-        if (cleaningFailed)
-            return false;
 
-        const float TILT_DEG = 9.5;    // level -> one side touching the table
-        const int RIGHT_TO_LEFT = -1;    // set to -1 if a positive motor turn pushes the right side DOWN
-        const float target = RIGHT_TO_LEFT * TILT_DEG * (1 - side); // +1 -> 0, 0 -> -9.5, -1 -> -19
-
-        motors.stop(brake);
-        COLLECTOR.setVelocity(30, percent);
-        COLLECTOR.setMaxTorque(50, percent); // enough to touch down, not enough to lift the robot
-        COLLECTOR.spinToPosition(target, degrees, false);
-
-        timer collectorTimer;
-        collectorTimer.clear();
-        while (!COLLECTOR.isDone() && collectorTimer.time(msec) < 1500)
-        {
-            // Going down: if it already rests on the table it stops moving, that's fine
-            if (side != 0 && collectorTimer.time(msec) > 300 && fabs(COLLECTOR.velocity(rpm)) < 2)
-                break;
-            wait(10, msec);
-        }
-        COLLECTOR.stop(hold);
-
-        // Going up must really reach level, otherwise it drags during turns
-        if (side == 0 && fabs(COLLECTOR.position(degrees) - target) > 4)
-        {
-            stopCleaning("Collector not level");
-            return false;
-        }
-        return true;
-    }
 
 float pauseForObstacle()
 {
@@ -894,7 +974,8 @@ float pauseForObstacle()
     Brain.Screen.print("Then tap Touch");
 
     // Require the obstacle to be removed, then a NEW Touch press and release.
-    while (true)
+    bool pause = true;
+    while (pause)
     {
         while (BUMPER.pressing() || TOUCHLED.pressing())
             wait(20, msec);
@@ -905,7 +986,8 @@ float pauseForObstacle()
         while (TOUCHLED.pressing() && !BUMPER.pressing())
             wait(20, msec);
         if (!BUMPER.pressing())
-            break;
+            pause = false;
+            continue;
     }
 
     TOUCHLED.setColor(color::green);
@@ -914,18 +996,7 @@ float pauseForObstacle()
 
 
 };
-
-// Function decalarations
-
-void turn_heading(float targetHeading);
-void find_absolute_heading();
-void calibrateSensors();
-void drivingHeading();
-void drivingHeading(float targetHeading, float expectedMM = 0, bool perimeter = false);
-bool driveDistance(float targetDistance, float targetSpeed);
-void automaticCleaning();
-float pauseForObstacle();
-
+/*
 // Test functions----------------------------------------------------------------------------------
 void testPIDTurning()
 {
@@ -966,7 +1037,7 @@ void handle_TOUCLED(bool &end_autonomous, color &TOUCLED_COLOR)
         endAutonomous(end_autonomous);
     }
 }
-
+*/
 // -------------------------------------- MAIN ---------------------------------------------------
 int main()
 {   
@@ -976,75 +1047,5 @@ int main()
     return 0;
 }
 
-// Function definitions
-
-// Yunhao -----------------------------------------------------------------------------------------
 
 
-// Riley ------------------------------------------------------------------------------------------
-
-// Richard ----------------------------------------------------------------------------------------
-void driveMotor(motor &m, double speed)
-{ // mannual control
-    if (speed > MAX_SPEED)
-    {
-        speed = MAX_SPEED;
-    }
-    else if (speed < -MAX_SPEED)
-    {
-        speed = -MAX_SPEED;
-    }
-
-    if (fabs(speed) < 3)
-    {
-        m.stop(brake);
-    }
-    else
-    {
-        m.spin(forward, speed, percent);
-    }
-}
-
-void Manual_Control()
-{
-    while (!CONTROLLER.ButtonEUp.pressing())
-    {
-
-        double forwardInput = CONTROLLER.AxisA.position();
-        double turnInput = CONTROLLER.AxisB.position();
-
-        if (fabs(forwardInput) < 5)
-        {
-            forwardInput = 0;
-        }
-        if (fabs(turnInput) < 5)
-        {
-            turnInput = 0;
-        }
-
-        double leftSpeed = forwardInput + turnInput;
-        double rightSpeed = forwardInput - turnInput;
-
-        double largest = fabs(leftSpeed);
-        if (fabs(rightSpeed) > largest)
-        {
-            largest = fabs(rightSpeed);
-        }
-
-        if (largest > 100)
-        {
-            leftSpeed = leftSpeed / largest * 100;
-            rightSpeed = rightSpeed / largest * 100;
-        }
-        leftSpeed *= MAX_SPEED / 100.0;
-        rightSpeed *= MAX_SPEED / 100.0;
-
-        driveMotor(LM, leftSpeed);
-        driveMotor(RM, rightSpeed);
-
-        wait(10, msec);
-    }
-    motors.stop();
-}
-
-// Matt -------------------------------------------------------------------------------------------
