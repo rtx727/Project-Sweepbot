@@ -662,6 +662,60 @@ struct robot
         motors.stop(brake);
     }
 // Matt -------------------------------------------------------------------------------------------
+        // Purpose: Moves the seesaw collector (only one side can touch the table at a time)
+    // Params: side = -1 left side down, 0 level (both sides up), +1 right side down
+    // Setup: at the start the user lowers the collector onto its RIGHT side and
+    //        COLLECTOR.resetPosition() is called, so 0 deg = right down,
+    //        9.5 deg = level, 19 deg = right down (measured range is +-9.5 deg from level)
+    // Outputs: true if it got there (going down, touching the table early counts)
+    bool setCollector(int side)
+    {
+        if (cleaningFailed)
+            return false;
+
+        const float TILT_DEG = 8.25;
+        const int RIGHT_TO_LEFT = -1;
+        const float TOLERANCE_DEG = 2.0;
+        const float SPEED_PERCENT = 15.0;
+
+        // +1 = right down (0°), 0 = level (-9.5°), -1 = left down (-19°).
+        const float target = RIGHT_TO_LEFT * TILT_DEG * (1 - side);
+
+        motors.stop(brake);
+        COLLECTOR.setMaxTorque(50, percent);
+
+        timer collectorTimer;
+        collectorTimer.clear();
+
+        float error = target - COLLECTOR.position(degrees);
+        bool touchedTable = false;
+
+        while (fabs(error) > TOLERANCE_DEG &&
+            !touchedTable &&
+            collectorTimer.time(msec) < 1500)
+        {
+            // Recheck the direction each time in case the motor overshoots.
+            COLLECTOR.spin(error > 0 ? forward : reverse, SPEED_PERCENT, percent);
+            wait(10, msec);
+
+            error = target - COLLECTOR.position(degrees);
+
+            // Low motor speed after 300 ms can indicate contact while lowering.
+            touchedTable = side != 0 &&
+                        collectorTimer.time(msec) >= 300 &&
+                        fabs(COLLECTOR.velocity(rpm)) < 2;
+        }
+
+        COLLECTOR.stop(hold);
+
+        if (fabs(error) <= TOLERANCE_DEG || touchedTable)
+            return true;
+
+        stopCleaning(side == 0 ? "Collector not level" : "Collector timeout");
+        return false;
+    }
+
+// Richard ----------------------------------------------------------------------------------------
     void automaticCleaning()
     {
         const float MAX_STEP_MM = 80;
@@ -774,60 +828,6 @@ struct robot
         Brain.Screen.setCursor(2, 1);
         Brain.Screen.print("Span L %.0f W %.0f", lengthMM, widthMM + 10);
     }
-        // Purpose: Moves the seesaw collector (only one side can touch the table at a time)
-    // Params: side = -1 left side down, 0 level (both sides up), +1 right side down
-    // Setup: at the start the user lowers the collector onto its RIGHT side and
-    //        COLLECTOR.resetPosition() is called, so 0 deg = right down,
-    //        9.5 deg = level, 19 deg = right down (measured range is +-9.5 deg from level)
-    // Outputs: true if it got there (going down, touching the table early counts)
-    bool setCollector(int side)
-    {
-        if (cleaningFailed)
-            return false;
-
-        const float TILT_DEG = 8.25;
-        const int RIGHT_TO_LEFT = -1;
-        const float TOLERANCE_DEG = 2.0;
-        const float SPEED_PERCENT = 15.0;
-
-        // +1 = right down (0°), 0 = level (-9.5°), -1 = left down (-19°).
-        const float target = RIGHT_TO_LEFT * TILT_DEG * (1 - side);
-
-        motors.stop(brake);
-        COLLECTOR.setMaxTorque(50, percent);
-
-        timer collectorTimer;
-        collectorTimer.clear();
-
-        float error = target - COLLECTOR.position(degrees);
-        bool touchedTable = false;
-
-        while (fabs(error) > TOLERANCE_DEG &&
-            !touchedTable &&
-            collectorTimer.time(msec) < 1500)
-        {
-            // Recheck the direction each time in case the motor overshoots.
-            COLLECTOR.spin(error > 0 ? forward : reverse, SPEED_PERCENT, percent);
-            wait(10, msec);
-
-            error = target - COLLECTOR.position(degrees);
-
-            // Low motor speed after 300 ms can indicate contact while lowering.
-            touchedTable = side != 0 &&
-                        collectorTimer.time(msec) >= 300 &&
-                        fabs(COLLECTOR.velocity(rpm)) < 2;
-        }
-
-        COLLECTOR.stop(hold);
-
-        if (fabs(error) <= TOLERANCE_DEG || touchedTable)
-            return true;
-
-        stopCleaning(side == 0 ? "Collector not level" : "Collector timeout");
-        return false;
-    }
-
-// Richard ----------------------------------------------------------------------------------------
     void driveMotor(motor &m, double speed)
     { // mannual control
         if (speed > MAX_SPEED)
