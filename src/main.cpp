@@ -993,7 +993,229 @@ float pauseForObstacle()
     TOUCHLED.setColor(color::green);
     return pauseTimer.time(msec);
 }
+    void circle_algo()
+    {
+        const float CLEANING_WIDTH_MM = 210.0f;
+        const float RADIUS_COMPENSATION_MM = 0.0f;
+        const float SPOKE_CLEARANCE_MM = 35.0f;
+        const float SPEED_PERCENT = 15.0f;
+        const float RIM_START_TURN_DEG = 90.0f; // Right turn after reaching the rim after spoke cleaning
+        const float RIM_SPEED_PERCENT = 12.0f;
+        const float RIM_SLOWDOWN_PERCENT = 6.0f;
+        const int RIM_TIMEOUT_MS = 240000;
+        const float PI = 3.14159265f;
+        const bool MEASURE_ONLY = false;
 
+        // Set the collector's zero position and wait for a fresh tap
+        cleaningFailed = false;
+        Brain.Screen.clearScreen();
+        Brain.Screen.setCursor(1, 1);
+        Brain.Screen.print("Circular cleaning");
+        Brain.Screen.setCursor(2, 1);
+        Brain.Screen.print("Collector RIGHT down");
+        Brain.Screen.setCursor(3, 1);
+        Brain.Screen.print("Then tap Touch");
+        while (TOUCHLED.pressing())
+            wait(10, msec);
+        while (!TOUCHLED.pressing())
+            wait(10, msec);
+        while (TOUCHLED.pressing())
+            wait(10, msec);
+
+        COLLECTOR.resetPosition();
+        if (!setCollector(0))
+            return;
+        wait(300, msec);
+        calibrateSensors();
+        TOUCHLED.setColor(color::green);
+
+        // Face the first rim. The alignment function backs up by BACK_MM
+        drivingHeading();
+        if (cleaningFailed)
+            return;
+        find_absolute_heading();
+        if (cleaningFailed)
+            return;
+
+        float nearBackoffMM = BACK_MM;
+        float measuredRadiusMM = 0.0f;
+        float outwardHeading = 0.0f;
+        for (int crossing = 0; crossing < 2; ++crossing)
+        {
+            if (crossing == 1)
+            {
+                //Correct for an inaccurate first crossing
+                turn_heading(90.0f);
+                if (cleaningFailed || !setCollector(0))
+                    return;
+                drivingHeading();
+                if (cleaningFailed)
+                    return;
+
+                const float nearEdgeMM = driveEncoderMM();
+                if (!driveDistance(-BACK_MM, SPEED_PERCENT))
+                    return;
+                nearBackoffMM = nearEdgeMM - driveEncoderMM();
+                if (!DISTANCE.isObjectDetected() || DISTANCE.objectDistance(mm) >= 100 ||
+                    !OPTICAL.isNearObject())
+                {
+                    stopCleaning("Edge backoff failed");
+                    return;
+                }
+            }
+
+            turn_heading(180.0f);
+            if (cleaningFailed || !setCollector(0))
+                return;
+            outwardHeading = BrainInertial.rotation(degrees);
+            const float startMM = driveEncoderMM();
+            drivingHeading(outwardHeading, 0, false);
+            if (cleaningFailed)
+                return;
+
+            // Start was one backoff inside the rim. Add that distance to the span
+            const float spanMM = driveEncoderMM() - startMM;
+            measuredRadiusMM = (spanMM + nearBackoffMM) / 2.0f;
+            if (measuredRadiusMM <= BACK_MM)
+            {
+                stopCleaning("Invalid circular span");
+                return;
+            }
+            // The robot is at the far edge. Reverse half the measured span
+            if (!driveDistance(-measuredRadiusMM, SPEED_PERCENT))
+                return;
+            if (!DISTANCE.isObjectDetected() || DISTANCE.objectDistance(mm) >= 100 ||
+                !OPTICAL.isNearObject())
+            {
+                stopCleaning("Center check failed");
+                return;
+            }
+        }
+
+        // Use the compensated radius for spacing and the measured radius for driving
+        const float tableRadiusMM = measuredRadiusMM + RADIUS_COMPENSATION_MM;
+        const float spokeLengthMM = measuredRadiusMM - BACK_MM - SPOKE_CLEARANCE_MM;
+        if (!isfinite(tableRadiusMM) || tableRadiusMM <= 0.0f || spokeLengthMM <= 0.0f)
+        {
+            stopCleaning("Invalid circular span");
+            return;
+        }
+
+        Brain.Screen.clearScreen();
+        Brain.Screen.setCursor(1, 1);
+        Brain.Screen.print("Radius est %.0f mm", tableRadiusMM);
+        Brain.Screen.setCursor(2, 1);
+        Brain.Screen.print("Measured diam %.0f mm", 2.0f * measuredRadiusMM);
+        if (MEASURE_ONLY)
+            return;
+
+        // Original pizza-slice formula. The angle from acos is in radians.
+        const float width = CLEANING_WIDTH_MM;
+        const float radius = tableRadiusMM;
+        float cosine = 1.0f - (width * width) / (2.0f * radius * radius);
+        if (cosine < -1.0f)
+            cosine = -1.0f;
+        const float maxTurnDeg = acosf(cosine) * 180.0f / PI;
+        if (maxTurnDeg <= 0.0f)
+        {
+            stopCleaning("Invalid spoke angle");
+            return;
+        }
+
+        int spokeCount = (int)ceilf(360.0f / maxTurnDeg);
+        if (spokeCount < 3)
+            spokeCount = 3;
+        const float turnDeg = 360.0f / spokeCount;
+
+        // For each spoke, clean outward and reverse back with the collector up.
+        for (int spoke = 0; spoke < spokeCount; ++spoke)
+        {
+            const float target = outwardHeading + spoke * turnDeg;
+            turn_heading(headingError(target));
+            if (cleaningFailed || !setCollector(-1))
+                return;
+            const float startMM = driveEncoderMM();
+            if (!driveDistance(spokeLengthMM, SPEED_PERCENT))
+                return;
+            const float distanceOutMM = driveEncoderMM() - startMM;
+            if (!setCollector(0) || !driveDistance(-distanceOutMM, SPEED_PERCENT))
+                return;
+        }
+
+        // The last spoke returned to the center. Approach the rim and finish last touches
+        drivingHeading();
+        if (cleaningFailed)
+            return;
+        find_absolute_heading();
+        if (cleaningFailed)
+            return;
+        turn_heading(RIM_START_TURN_DEG);
+        if (cleaningFailed || !setCollector(-1))
+            return;
+
+        // Follow the edge on the left until the gyro records one clockwise lap (heading == initial heading)
+        Brain.Screen.clearScreen();
+        Brain.Screen.setCursor(1, 1);
+        Brain.Screen.print("Cleaning rim");
+        const float rimStartRotation = BrainInertial.rotation(degrees);
+        timer rimTimer;
+        rimTimer.reset();
+        float pausedMS = 0.0f;
+        bool sawLeftOnTable = false;
+        bool sawLeftOffTable = false;
+        while (BrainInertial.rotation(degrees) - rimStartRotation < 360.0f)
+        {
+            pausedMS += pauseForObstacle();
+            if (!OPTICAL.isNearObject())
+            {
+                stopCleaning("Right sensor off table");
+                return;
+            }
+            if (rimTimer.time(msec) - pausedMS >= RIM_TIMEOUT_MS)
+            {
+                stopCleaning("Rim lap timeout");
+                return;
+            }
+
+            const bool leftOnTable = DISTANCE.isObjectDetected() && DISTANCE.objectDistance(mm) < 100;
+            float leftSpeed = RIM_SPEED_PERCENT;
+            float rightSpeed = RIM_SPEED_PERCENT;
+            if (leftOnTable)
+            {
+                sawLeftOnTable = true;
+                leftSpeed -= RIM_SLOWDOWN_PERCENT; // Steer left toward the rim
+            }
+            else
+            {
+                sawLeftOffTable = true;
+                rightSpeed -= RIM_SLOWDOWN_PERCENT; // Steer right toward the table
+            }
+            LM.spin(forward, leftSpeed, percent);
+            RM.spin(forward, rightSpeed, percent);
+            wait(20, msec);
+        }
+        motors.stop();
+        if (!OPTICAL.isNearObject())
+        {
+            stopCleaning("Right sensor off table");
+            return;
+        }
+        if (!sawLeftOnTable || !sawLeftOffTable)
+        {
+            stopCleaning("Rim edge not tracked");
+            return;
+        }
+        if (!setCollector(0))
+            return;
+
+        Brain.Screen.clearScreen();
+        Brain.Screen.setCursor(1, 1);
+        Brain.Screen.print("Finished Cleaning");
+        Brain.Screen.setCursor(2, 1);
+        Brain.Screen.print("Radius %.0f mm", tableRadiusMM);
+        Brain.Screen.setCursor(3, 1);
+        Brain.Screen.print("Spokes %d + rim", spokeCount);
+    }
 
 };
 /*
