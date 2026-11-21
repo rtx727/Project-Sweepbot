@@ -1268,6 +1268,58 @@ int main()
     SweepBot.automaticCleaning();
     return 0;
 }
+//NEW int main
+/*
+int main(){
+  robot SweepBot;
+  timer timer67;
+  int hue = 0;
+  bool change_Mode = false;
+  bool circular = false;
+  bool rectangular = false;
+  
+  Brain.Screen.clearScreen();
+  Brain.Screen.setCursor(1,1);
+  Brain.Screen.print("Press Touchled to make selection");
 
+  while (!TOUCHLED.pressing()){
+    TOUCHLED.setColor(hue);
+    hue = (hue + 5) % 360;
+    wait(50, msec);
+  }
 
+  TOUCHLED.setColor(color::blue);
+  Brain.Screen.clearScreen();
+  Brain.Screen.setCursor(1, 1);
+  Brain.Screen.print("Rectangle selected");
+  Brain.Screen.setCursor(2, 1);
+  Brain.Screen.print("Tap again for Circle");
+
+  // Wait for the first tap to end.
+  while (TOUCHLED.pressing())
+      wait(10, msec);
+
+  selectionTimer.reset();
+
+  // Remember a second tap as soon as it is detected.
+  while (!circular && selectionTimer.time(msec) < 10000)
+  {
+      circular = TOUCHLED.pressing();
+      if (!circular)
+          wait(10, msec);
+  }
+
+  while (TOUCHLED.pressing())
+      wait(10, msec);
+
+  if (circular)
+      SweepBot.circle_algo();
+  else
+      SweepBot.automaticCleaning();
+
+  return 0;
+
+}
+
+*/
 
