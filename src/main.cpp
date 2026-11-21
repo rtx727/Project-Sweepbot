@@ -1274,9 +1274,7 @@ int main(){
   robot SweepBot;
   timer timer67;
   int hue = 0;
-  bool change_Mode = false;
   bool circular = false;
-  bool rectangular = false;
   
   Brain.Screen.clearScreen();
   Brain.Screen.setCursor(1,1);
