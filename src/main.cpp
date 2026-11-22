@@ -323,11 +323,23 @@ struct robot
             {
                 pausedMS += pauseForObstacle();
                 const float travelledMM = driveEncoderMM() - startMM;
-                if (leftTimer.time(msec) - pausedMS > 65000 || travelledMM > 4000 ||
-                    (firstEdgeMM >= 0 && travelledMM - firstEdgeMM > 67))
-                {
-                    stopCleaning("Alignment edge mismatch");
-                    return;
+                if(firstEdgeMM >= 0 && travelledMM - firstEdgeMM > 67){
+                  motors.stop(brake);
+                  const float correctionAngle = left_edge_found? -10.0f : 10.0f;
+                  const float retreatMM = travelledMM - firstEdgeMM + BACK_MM;
+                  if(!driveDistance(-retreatMM, 15)) return;
+                  turn_heading(correctionAngle);
+                  //begin fresh measurement after repositioning
+                  left_edge_found = false;
+                  right_edge_found = false;
+                  left_time = 0;
+                  right_time = 0;
+                  firstEdgeMM = -1;
+                  startMM = driveEncoderMM();
+                  pausedMS = 0;
+                  leftTimer.clear();
+                  rightTimer.clear();
+                  continue;
                 }
 
                 // If right sensor is still on the table, keep driving right motor
@@ -636,15 +648,7 @@ struct robot
                 stopCleaning("Straight travel limit");
                 return;
             }
-
             float speed = velocity;
-            if (expectedMM > 0)
-            {
-                const float remainingMM = expectedMM - travelledMM;
-                const float ramp = fmin(1.0f, fmax(0.0f, (remainingMM - EDGE_APPROACH_MM) / 60.0f));
-                speed = 12 + (velocity - 12) * ramp;
-            }
-
             float error = headingError(targetHeading);
             float correctionMagnitude = drivePID.calculatePID(error);
             if (correctionMagnitude > MAX_CORRECTION)
