@@ -68,6 +68,7 @@ using namespace std;
 // define your global instances of motors and other devices here
 motor RM(PORT12, bool(reverse));
 motor LM(PORT7, bool(forward));
+motor BRUSH(PORT4, bool(forward));
 bumper BUMPER(PORT3);
 distance DISTANCE(PORT1); // left side cliff sensor
 motor_group motors(RM, LM);
@@ -746,6 +747,7 @@ struct robot
         wait(300, msec);
         calibrateSensors();
         TOUCHLED.setColor(color::green);
+        BRUSH.spin(reverse, 50, percent);
 
         // Find the first edge and keep its normal as the reference for the run.
         drivingHeading();
