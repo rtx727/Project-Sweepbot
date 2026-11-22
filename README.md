@@ -32,7 +32,7 @@ Program Task Assignments:
 - Richard: Manual Controller program, v-shape collector program
 - Yunhao: ~~PID controller~~, ~~first edge detection algorithim~~, ~~collision detection using accelerometer~~
 
-Weekend 1 tasks:
+Weekend 1 tasks(Design+Selection):
 -~~Solve lack of friction problem~~
 -~~Begin collision detection code~~
 -~~Get first trial in: ->Use find absolute heading and a loop to travel down the table to wipe all of it.~~
@@ -40,7 +40,7 @@ DO NOT DELAY THIS. ABSOLUTELY CRITICAL TO START FINDING ISSUES.
 -Think of how to incorporate functions together into a program
 -Clean up code on spare time
 
-Week 2:
+Week 2 (Prototyping):
 -Integrate algorithim
 -Formal presentation preparation, presentation
 -Look into slowing down turns
@@ -59,3 +59,16 @@ collision has been detected.
 Edge detection logic:
 -Get two sensors to fall of table at exact same time to get absolute heading
 -perform this calibration multiple times throughout the cleaning process
+
+Week 3(Validation and reiteration):
+-Feedback received
+-Proceed to add mechanical brush and dust pan
+-implementing stretch goals including circular table algorithm
+-Final tuning and case studies on different circumstances
+-Determine what was the limiting factor of the robot
+
+Week 4(Reiterate)
+-Evaluate feasibility of adding extra stretch goals
+-Finalize symposium scheduled tasks
+-Prepare documentation (e.g. Post Mortem)
+
