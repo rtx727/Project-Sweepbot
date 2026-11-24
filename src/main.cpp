@@ -317,7 +317,7 @@ struct robot
             rightTimer.clear();
             float pausedMS = 0;
             float firstEdgeMM = -1;
-            const float startMM = driveEncoderMM();
+            float startMM = driveEncoderMM();
 
             // Drive forward until BOTH sensors have detected the edge
             while (!left_edge_found || !right_edge_found)
@@ -1267,15 +1267,15 @@ void handle_TOUCLED(bool &end_autonomous, color &TOUCLED_COLOR)
 }
 */
 // -------------------------------------- MAIN ---------------------------------------------------
-int main()
-{   
-    //Declare robot object
-    robot SweepBot;
-    SweepBot.automaticCleaning();
-    return 0;
-}
+// int main()
+// {   
+//     //Declare robot object
+//     robot SweepBot;
+//     SweepBot.automaticCleaning();
+//     return 0;
+// }
 //NEW int main
-/*
+
 int main(){
   robot SweepBot;
   timer selectionTimer;
@@ -1286,8 +1286,16 @@ int main(){
   Brain.Screen.setCursor(1,1);
   Brain.Screen.print("Press Touchled to make selection");
 
+  // Full brightness so every colour is clearly visible
+  TOUCHLED.setBrightness(100);
+
+  // Rainbow cycle while waiting for a selection.
+  // setColor(int) treats the number as a 0xRRGGBB value, not a hue,
+  // so convert the hue (0-359 degrees) to a colour first.
   while (!TOUCHLED.pressing()){
-    TOUCHLED.setColor(hue);
+    color rainbow;
+    rainbow.hsv(hue, 1.0, 1.0); // hue, saturation, value
+    TOUCHLED.setColor(rainbow);
     hue = (hue + 5) % 360;
     wait(50, msec);
   }
@@ -1305,7 +1313,7 @@ int main(){
   selectionTimer.reset();
 
   // Toggles Circular as soon as a second tap is detected.
-  while (!circular && selectionTimer.time(msec) < 10000)
+  while (!circular && selectionTimer.time(msec) < 3000)
   {
       circular = TOUCHLED.pressing();
       if (!circular)
@@ -1322,6 +1330,3 @@ int main(){
 
   return 0;
 }
-
-*/
-
