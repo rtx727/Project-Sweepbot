@@ -796,7 +796,7 @@ struct robot
         }
         const float lengthMM = (sidesMM[0] + sidesMM[2]) / 2;
         const float widthMM = fmin(sidesMM[1], sidesMM[3]) - 10;
-        rows = (int)ceil(widthMM / MAX_STEP_MM) + 2;//Add a row to eliminate dead zone
+        rows = (int)ceil(widthMM / MAX_STEP_MM) + 1;//Add a row to eliminate dead zone
         stepMM = widthMM / (rows - 1);
 
         // Keep the original row loop. Each row follows one of two fixed headings.
