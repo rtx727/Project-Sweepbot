@@ -855,47 +855,73 @@ struct robot
         }
     }
 
-    void Manual_Control()
+void Manual_Control()
+{
+    motors.stop(brake);
+
+    bool running = setCollector(0);
+    int collectorState = 0;
+
+    if (running)
+        BRUSH.spin(reverse, 50, percent);
+
+    Brain.Screen.clearScreen();
+    Brain.Screen.setCursor(1, 1);
+    Brain.Screen.print("Manual: E Up to exit");
+
+    while (running && !cleaningFailed &&
+           CONTROLLER.installed() &&
+           !CONTROLLER.ButtonEUp.pressing())
     {
-        while (!CONTROLLER.ButtonEUp.pressing())
+        double forwardInput = CONTROLLER.AxisA.position();
+        double turnInput = CONTROLLER.AxisC.position();
+
+        // Ignore small joystick movements.
+        if (fabs(forwardInput) < 5)
+            forwardInput = 0;
+
+        if (fabs(turnInput) < 10)
+            turnInput = 0;
+
+        // Left turn: -1, right turn: +1, straight/stopped: 0.
+        int desiredCollector = 0;
+
+        if (turnInput < 0)
+            desiredCollector = -1;
+        else if (turnInput > 0)
+            desiredCollector = 1;
+
+        // Adjust only when the requested collector position changes.
+        if (desiredCollector != collectorState)
         {
-
-            double forwardInput = CONTROLLER.AxisA.position();
-            double turnInput = CONTROLLER.AxisB.position();
-
-            if (fabs(forwardInput) < 5)
-            {
-                forwardInput = 0;
-            }
-            if (fabs(turnInput) < 5)
-            {
-                turnInput = 0;
-            }
-
-            double leftSpeed = forwardInput + turnInput;
-            double rightSpeed = forwardInput - turnInput;
-
-            double largest = fabs(leftSpeed);
-            if (fabs(rightSpeed) > largest)
-            {
-                largest = fabs(rightSpeed);
-            }
-
-            if (largest > 100)
-            {
-                leftSpeed = leftSpeed / largest * 100;
-                rightSpeed = rightSpeed / largest * 100;
-            }
-            leftSpeed *= MAX_SPEED / 100.0;
-            rightSpeed *= MAX_SPEED / 100.0;
-
-            driveMotor(LM, leftSpeed);
-            driveMotor(RM, rightSpeed);
-
-            wait(10, msec);
+            running = setCollector(desiredCollector);
+            collectorState = desiredCollector;
+            continue;
         }
-        motors.stop();
+
+        double leftSpeed = forwardInput + turnInput;
+        double rightSpeed = forwardInput - turnInput;
+
+        // Scale both speeds together to preserve the turning ratio.
+        const double largest =
+            fmax(fabs(leftSpeed), fabs(rightSpeed));
+
+        if (largest > 100)
+        {
+            leftSpeed = leftSpeed / largest * 100;
+            rightSpeed = rightSpeed / largest * 100;
+        }
+
+        driveMotor(LM, leftSpeed * MAX_SPEED / 100.0);
+        driveMotor(RM, rightSpeed * MAX_SPEED / 100.0);
+
+        wait(10, msec);
     }
+
+    motors.stop(brake);
+    BRUSH.stop(coast);
+    COLLECTOR.stop(hold);
+}
 
     bool driveDistance(float targetDistance, float targetSpeed)
     {
