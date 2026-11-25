@@ -1307,6 +1307,7 @@ float pauseForObstacle()
         
     } while(!TOUCHLED.pressing());
     //wait for release
+    TOUCHLED.setColor(color::red);
     while(TOUCHLED.pressing()){
         wait(10, msec);
     }
@@ -1377,19 +1378,19 @@ int main(){
   selection = robot::cleaningSelection();
   if (selection == 1){
     TOUCHLED.setColor(color::green);
-    TOUCHLED.setColor(color::red);
+    TOUCHLED.setColor(color::yellow);
     SweepBot.automaticCleaning();
     
   }
   else if (selection == 2){
     TOUCHLED.setColor(color::green);
-    TOUCHLED.setColor(color::red);
+    TOUCHLED.setColor(color::yellow);
     SweepBot.circle_algo();
 
   }
   else if (selection == 3){
     TOUCHLED.setColor(color::green);
-    TOUCHLED.setColor(color::red);
+    TOUCHLED.setColor(color::yellow);
     SweepBot.Manual_Control();
   }  
 
