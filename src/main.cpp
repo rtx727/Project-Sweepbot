@@ -75,11 +75,9 @@ motor_group motors(RM, LM);
 optical OPTICAL(PORT6); // right side cliff sensor
 controller CONTROLLER;
 motor COLLECTOR(PORT2, false); //seesaw collector
-// inertial BrainInertial = inertial();
 touchled TOUCHLED(PORT8);
 
 // Structs
-const double MAX_SPEED = 50.0;
 
 // Struct to hold PID controller values and perform calculations
 struct PIDcontroller
@@ -207,6 +205,7 @@ struct pose
 // Contains movement functions
 struct robot
 {
+    const double MAX_SPEED = 50.0; //Maximum speed of the robot
     pose robot_pose;
     float absoluteHeading;
     const float BACK_MM = 50.0;           // Distance to back up when finding absolute heading
@@ -240,6 +239,8 @@ struct robot
     } // Allow time for calibration
 
     BrainInertial.resetRotation();
+    // Full brightness so every colour is clearly visible
+    TOUCHLED.setBrightness(100);
 }
 
     float driveEncoderMM()
@@ -988,8 +989,6 @@ void Manual_Control()
         return travelled >= targetDegree;
     }
 
-
-
 float pauseForObstacle()
 {
     if (!BUMPER.pressing())
@@ -1249,6 +1248,70 @@ float pauseForObstacle()
         Brain.Screen.print("Spokes %d + rim", spokeCount);
     }
 
+    //Allow users to select cleaning mode
+    static int cleaningSelection(){
+    //1 for rectangle, 2 for circle, 3 for manual
+    int selection = 1;
+
+    do{
+        //find the right display
+        if (selection == 1){
+            Brain.Screen.clearScreen();
+            Brain.Screen.setCursor(1,1);
+            Brain.Screen.print("Selection:");
+            Brain.Screen.setCursor(2,1);
+            Brain.Screen.print("Rectangle");
+            Brain.Screen.setCursor(3,1);
+            Brain.Screen.print("> Circle");
+            Brain.Screen.setCursor(5,2);
+            Brain.Screen.print("Tap LED to select");
+        }
+        else if (selection == 2){
+            Brain.Screen.clearScreen();
+            Brain.Screen.setCursor(1,1);
+            Brain.Screen.print("Selection:");
+            Brain.Screen.setCursor(2,1);
+            Brain.Screen.print("> Manual");
+            Brain.Screen.setCursor(3,1);
+            Brain.Screen.print("Circle");
+            Brain.Screen.setCursor(5,2);
+            Brain.Screen.print("Tap LED to select");
+        }
+        else if (selection == 3){
+            Brain.Screen.clearScreen();
+            Brain.Screen.setCursor(1,1);
+            Brain.Screen.print("Selection:");
+            Brain.Screen.setCursor(2,1);
+            Brain.Screen.print("> Rectangle");
+            Brain.Screen.setCursor(3,1);
+            Brain.Screen.print("Circle");
+            Brain.Screen.setCursor(5,2);
+            Brain.Screen.print("Tap LED to select");
+        }
+
+        if (Brain.buttonRight.pressing()){
+            selection++;
+            if (selection > 3){
+                selection = 1;
+            }
+            wait(500, msec);
+        }
+        else if (Brain.buttonLeft.pressing()){
+            selection--;
+            if (selection < 1){
+                selection = 3;
+            }
+            wait(500, msec);
+        }
+
+        
+    } while(!TOUCHLED.pressing());
+    //wait for release
+    while(TOUCHLED.pressing()){
+        wait(10, msec);
+    }
+    return selection;
+}
 };
 /*
 // Test functions----------------------------------------------------------------------------------
@@ -1300,10 +1363,37 @@ void handle_TOUCLED(bool &end_autonomous, color &TOUCLED_COLOR)
 //     SweepBot.automaticCleaning();
 //     return 0;
 // }
+
+
+
+
 //NEW int main
 
 int main(){
   robot SweepBot;
+  
+  int selection = 0;
+  //Get use to select the cleaning mode
+  selection = robot::cleaningSelection();
+  if (selection == 1){
+    TOUCHLED.setColor(color::green);
+    TOUCHLED.setColor(color::red);
+    SweepBot.automaticCleaning();
+    
+  }
+  else if (selection == 2){
+    TOUCHLED.setColor(color::green);
+    TOUCHLED.setColor(color::red);
+    SweepBot.circle_algo();
+
+  }
+  else if (selection == 3){
+    TOUCHLED.setColor(color::green);
+    TOUCHLED.setColor(color::red);
+    SweepBot.Manual_Control();
+  }  
+
+  /*
   timer selectionTimer;
   int hue = 0;
   bool circular = false;
@@ -1312,8 +1402,7 @@ int main(){
   Brain.Screen.setCursor(1,1);
   Brain.Screen.print("Press Touchled to make selection");
 
-  // Full brightness so every colour is clearly visible
-  TOUCHLED.setBrightness(100);
+  
 
   // Rainbow cycle while waiting for a selection.
   // setColor(int) treats the number as a 0xRRGGBB value, not a hue,
@@ -1327,8 +1416,9 @@ int main(){
   }
 
   // Wait for the first tap to end.
-  while (TOUCHLED.pressing())
+  while (TOUCHLED.pressing()){
       wait(10, msec);
+    }
  
   TOUCHLED.setColor(color::blue);
   Brain.Screen.clearScreen();
@@ -1353,6 +1443,8 @@ int main(){
       SweepBot.circle_algo();
   else
       SweepBot.automaticCleaning();
+    */
+
 
   return 0;
 }
