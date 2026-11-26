@@ -209,7 +209,7 @@ struct robot
     pose robot_pose;
     float absoluteHeading;
     const float BACK_MM = 100.0;           // Distance to back up when finding absolute heading
-    const float EDGE_APPROACH_MM = 150.0; // Distance to drive forward after finding absolute heading
+    const float EDGE_APPROACH_MM = 150.0; // How far before the expected edge a detection is still accepted
     bool cleaningFailed;
 
     // 1=red, 2=green, 3=blue, 4=yellow
@@ -675,7 +675,7 @@ struct robot
     // Params: side = -1 left side down, 0 level (both sides up), +1 right side down
     // Setup: at the start the user lowers the collector onto its RIGHT side and
     //        COLLECTOR.resetPosition() is called, so 0 deg = right down,
-    //        9.5 deg = level, 19 deg = right down (measured range is +-9.5 deg from level)
+    //        -8.25 deg = level, -16.5 deg = left down (measured range is +-9.5 deg from level)
     // Outputs: true if it got there (going down, touching the table early counts)
     bool setCollector(int side)
     {
