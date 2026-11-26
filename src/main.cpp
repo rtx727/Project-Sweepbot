@@ -201,12 +201,149 @@ struct pose
     }
 };
 
+struct collisionMonitor{
+    bool collisionDetected;
+    int collisionCount;
+    timer collisionTimer;
+    float previousTime;
+
+    //Records acceleration values from the last loop to calculate jerk
+    float prevAx;
+    float prevAy;
+    float prevAz;
+
+    //Records rotational values from last loop to find angular acceleration
+    float prevGx;
+    float prevGy;
+    float prevGz;
+
+
+    collisionMonitor()
+    {
+        collisionDetected = false;
+        collisionCount = 0;
+        collisionTimer.reset();
+        previousTime = 0;
+        prevGx = BrainInertial.gyroRate(xaxis, dps);
+        prevGy = BrainInertial.gyroRate(yaxis, dps);
+        prevGz = BrainInertial.gyroRate(zaxis, dps);
+        prevAx = BrainInertial.acceleration(xaxis);
+        prevAy = BrainInertial.acceleration(yaxis);
+        prevAz = BrainInertial.acceleration(zaxis);
+    }
+    ~collisionMonitor()
+    {
+        // Destructor
+    }
+
+    bool detectCollisionLin(){
+        const float JERK_THRESHOLD = 6.0; //Collision threshold in m/s^3 
+        
+        //Calculate time difference since last reading
+        float currentTime = collisionTimer.time(msec) / 1000.0; // Convert to seconds
+        float dt = currentTime - previousTime;
+
+        float currAx = BrainInertial.acceleration(xaxis);
+        float currAy = BrainInertial.acceleration(yaxis);    
+        float currAz = BrainInertial.acceleration(zaxis);
+
+        // Do not divide by zero
+        if (dt > 0){
+            float jerkX = (currAx - prevAx) / dt;
+            float jerkY = (currAy - prevAy) / dt;
+            float jerkZ = (currAz - prevAz) / dt;
+
+            //Calculate jerk magnitude
+            float jerk = sqrt(jerkX * jerkX + jerkY * jerkY + jerkZ * jerkZ);
+
+            //If jerk exceeds threshold, increment collision count
+            if (jerk > JERK_THRESHOLD){
+                collisionCount++;
+            }
+
+            //Only register collison if loop happens more than 2 times but less than 5 times
+            if (collisionCount > 2 && collisionCount < 5 && !collisionDetected){
+                collisionDetected = true;
+                Brain.Screen.clearScreen();
+                Brain.Screen.setCursor(1, 1);
+                Brain.Screen.print("Collision Detected");
+            }
+            //Probably not a collision if it happens more than 5 times in a row, reset the counter
+            else if (collisionCount >= 5){
+                collisionDetected = false;
+                collisionCount = 0;
+            }
+            
+        }
+        //Update member variables
+        previousTime = currentTime;
+        prevAx = currAx;
+        prevAy = currAy;
+        prevAz = currAz;
+        return collisionDetected;
+    }
+
+    // Detects collisions based on angular acceleration
+    bool detectCollisionAng(){
+        const float ANGULAR_ACCEL_THRESHOLD = 3200.0; //Collision threshold in degrees/s^2
+
+        //Calculate time difference since last reading
+        float currentTime = collisionTimer.time(msec) / 1000.0; // Convert to seconds
+        float dt = currentTime - previousTime;
+
+        float currGx = BrainInertial.gyroRate(xaxis, dps);
+        float currGy = BrainInertial.gyroRate(yaxis, dps);
+        float currGz = BrainInertial.gyroRate(zaxis, dps);
+
+        if (dt > 0){ // Do not divide by zero
+            //Calculate angular acceleration for each axis
+            float dGX = (currGx - prevGx) / dt;
+            float dGY = (currGy - prevGy) / dt;
+            float dGZ = (currGz - prevGz) / dt;
+
+            //Calculate angular acceleration magnitude
+            float angAccel = sqrt(dGX * dGX + dGY * dGY + dGZ * dGZ);
+
+     
+            //If angular acceleration exceeds threshold, increment collision count
+            if (angAccel > ANGULAR_ACCEL_THRESHOLD){
+                collisionCount++;
+                collisionDetected = true;
+                Brain.Screen.clearScreen();
+                Brain.Screen.setCursor(1, 1);
+                Brain.Screen.print("Collision Detected");
+
+            }
+
+            /*
+            //Only register collison if loop happens 2 times in a row
+            if (collisionCount > 1 && !collisionDetected){
+                collisionDetected = true;
+                Brain.Screen.clearScreen();
+                Brain.Screen.setCursor(1, 1);
+                Brain.Screen.print("Collision Detected");
+            }*/
+            
+        }
+
+        //Update member variables
+        previousTime = currentTime;
+        prevGx = currGx;
+        prevGy = currGy;
+        prevGz = currGz;
+
+        return collisionDetected;
+    }
+};
+
+
 // Struct for robot
 // Contains movement functions
 struct robot
 {
     const double MAX_SPEED = 50.0; // Maximum speed of the robot
     pose robot_pose;
+    collisionMonitor collisionMonitor;
     float absoluteHeading;
     const float BACK_MM = 100.0;           // Distance to back up when finding absolute heading
     const float EDGE_APPROACH_MM = 150.0; // How far before the expected edge a detection is still accepted
@@ -588,9 +725,9 @@ struct robot
         timer driveTimer;
         driveTimer.clear();
         bool reachedEdge = false;
-        while (!reachedEdge) //YUNHAO LOOK HERE, PUT COLLISION DETECTION HERE
+        while (!reachedEdge )
         {
-            if (BUMPER.pressing())
+            if (BUMPER.pressing() || collisionMonitor.detectCollisionLin()) //RICHARD LOOK HERE on this line
             {
                 pausedMS += pauseForObstacle();
                 drivePID.previousError = 0;
@@ -948,16 +1085,19 @@ struct robot
         timer moveTimer;
         moveTimer.reset();
 
+        //RICHARD LOOK HERE
+        float pauseMS = 0;
+
         while (travelled < targetDegree &&
                moveTimer.time(msec) - pausedMS < timeoutMS) //ADD COLLISION DETECTION HERE
         {
-            float pauseMS = pauseForObstacle();
-            if (pauseMS > 0)
+            if (BUMPER.pressing() || collisionMonitor.detectCollisionLin())
             {
-                pausedMS += pauseMS;
+                pausedMS += pauseForObstacle();
                 drivePID.previousError = 0;
                 drivePID.previousTime = drivePID.PIDtimer.time(msec);
             }
+            
             if (direction == forward &&
                 (!DISTANCE.isObjectDetected() || DISTANCE.objectDistance(mm) >= 100 ||
                  !OPTICAL.isNearObject()))
