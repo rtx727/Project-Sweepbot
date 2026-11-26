@@ -208,7 +208,7 @@ struct robot
     const double MAX_SPEED = 50.0; // Maximum speed of the robot
     pose robot_pose;
     float absoluteHeading;
-    const float BACK_MM = 50.0;           // Distance to back up when finding absolute heading
+    const float BACK_MM = 100.0;           // Distance to back up when finding absolute heading
     const float EDGE_APPROACH_MM = 150.0; // Distance to drive forward after finding absolute heading
     bool cleaningFailed;
 
@@ -402,8 +402,8 @@ struct robot
             // If error is outside acceptable limits, execute correction turn
             if (fabs(error) > ACCEPTABLE_TIME_ERROR)
             {
-                float turnAmount = turnPID.calculatePID(error); //Degrees turned (MAX output is 100)
-                //float turnAmount = fmin(8.0f, fmax(1.5f, fabs(error) * .014f));
+                //float turnAmount = turnPID.calculatePID(error); //Degrees turned (MAX output is 100)
+                float turnAmount = fmin(8.0f, fmax(0.67f, fabs(error) * .014f));
 
                 // If error > 0, left_time was larger, right sensor hit the edge first
                 // The right side is too far forward
@@ -491,6 +491,7 @@ struct robot
         // Perform movement until error is acceptable
         while (!settled)
         {
+            pauseForObstacle();
             float pauseMS = pauseForObstacle();
             if (pauseMS > 0)
             {
@@ -569,7 +570,7 @@ struct robot
             return;
         motors.stop(brake);
         // Use the original 40% for initial straight driving; survey the perimeter at 20%.
-        float velocity = perimeter ? 20 : 40;
+        float velocity = perimeter ? 30 : 40;
         const float startMM = driveEncoderMM();
         float pausedMS = 0;
         int sideCorrections = 0;
@@ -1011,7 +1012,7 @@ struct robot
         bool pause = true;
         while (pause)
         {
-            while (BUMPER.pressing() || TOUCHLED.pressing())
+            while (BUMPER.pressing() || TOUCHLED.pressing())  
                 wait(20, msec);
             while (!TOUCHLED.pressing() && !BUMPER.pressing())
                 wait(20, msec);
@@ -1030,12 +1031,12 @@ struct robot
     void circle_algo()
     {
         const float CLEANING_WIDTH_MM = 210.0f;
-        const float RADIUS_COMPENSATION_MM = 0.0f;
+        const float RADIUS_COMPENSATION_MM = 310.0f;
         const float SPOKE_CLEARANCE_MM = 35.0f;
-        const float SPEED_PERCENT = 15.0f;
+        const float SPEED_PERCENT = 40.0f;
         const float RIM_START_TURN_DEG = 90.0f; // Right turn after reaching the rim after spoke cleaning
         const float RIM_SPEED_PERCENT = 12.0f;
-        const float RIM_SLOWDOWN_PERCENT = 6.0f;
+        const float RIM_SLOWDOWN_PERCENT = 15.0f;
         const int RIM_TIMEOUT_MS = 240000;
         const float PI = 3.14159265f;
         const bool MEASURE_ONLY = false;
@@ -1062,6 +1063,7 @@ struct robot
         wait(300, msec);
         calibrateSensors();
         TOUCHLED.setColor(color::green);
+        BRUSH.spin(reverse, 50, percent);
 
         // Face the first rim. The alignment function backs up by BACK_MM
         drivingHeading();
@@ -1074,29 +1076,9 @@ struct robot
         float nearBackoffMM = BACK_MM;
         float measuredRadiusMM = 0.0f;
         float outwardHeading = 0.0f;
-        for (int crossing = 0; crossing < 2; ++crossing)
+    
+        for (int crossing = 0; crossing <1; ++crossing)
         {
-            if (crossing == 1)
-            {
-                // Correct for an inaccurate first crossing
-                turn_heading(90.0f);
-                if (cleaningFailed || !setCollector(0))
-                    return;
-                drivingHeading();
-                if (cleaningFailed)
-                    return;
-
-                const float nearEdgeMM = driveEncoderMM();
-                if (!driveDistance(-BACK_MM, SPEED_PERCENT))
-                    return;
-                nearBackoffMM = nearEdgeMM - driveEncoderMM();
-                if (!DISTANCE.isObjectDetected() || DISTANCE.objectDistance(mm) >= 100 ||
-                    !OPTICAL.isNearObject())
-                {
-                    stopCleaning("Edge backoff failed");
-                    return;
-                }
-            }
 
             turn_heading(180.0f);
             if (cleaningFailed || !setCollector(0))
@@ -1109,14 +1091,14 @@ struct robot
 
             // Start was one backoff inside the rim. Add that distance to the span
             const float spanMM = driveEncoderMM() - startMM;
-            measuredRadiusMM = (spanMM + nearBackoffMM) / 2.0f;
+            measuredRadiusMM = (spanMM) / 2.0f;
             if (measuredRadiusMM <= BACK_MM)
             {
                 stopCleaning("Invalid circular span");
                 return;
             }
             // The robot is at the far edge. Reverse half the measured span
-            if (!driveDistance(-measuredRadiusMM, SPEED_PERCENT))
+            if (!driveDistance(-measuredRadiusMM-60, SPEED_PERCENT))
                 return;
             if (!DISTANCE.isObjectDetected() || DISTANCE.objectDistance(mm) >= 100 ||
                 !OPTICAL.isNearObject())
@@ -1128,7 +1110,7 @@ struct robot
 
         // Use the compensated radius for spacing and the measured radius for driving
         const float tableRadiusMM = measuredRadiusMM + RADIUS_COMPENSATION_MM;
-        const float spokeLengthMM = measuredRadiusMM - BACK_MM - SPOKE_CLEARANCE_MM;
+        const float spokeLengthMM = measuredRadiusMM - SPOKE_CLEARANCE_MM;//deleted BACK_MM
         if (!isfinite(tableRadiusMM) || tableRadiusMM <= 0.0f || spokeLengthMM <= 0.0f)
         {
             stopCleaning("Invalid circular span");
@@ -1169,18 +1151,13 @@ struct robot
             if (cleaningFailed || !setCollector(-1))
                 return;
             const float startMM = driveEncoderMM();
-            if (!driveDistance(spokeLengthMM, SPEED_PERCENT))
-                return;
-            const float distanceOutMM = driveEncoderMM() - startMM;
-            if (!setCollector(0) || !driveDistance(-distanceOutMM, SPEED_PERCENT))
+            drivingHeading();
+            if (!setCollector(0) || !driveDistance(-spokeLengthMM, SPEED_PERCENT))
                 return;
         }
 
         // The last spoke returned to the center. Approach the rim and finish last touches
         drivingHeading();
-        if (cleaningFailed)
-            return;
-        find_absolute_heading();
         if (cleaningFailed)
             return;
         turn_heading(RIM_START_TURN_DEG);
@@ -1262,11 +1239,11 @@ struct robot
             // find the right display
             if (selection == 1)
             {
-                Brain.Screen.clearScreen();
+                
                 Brain.Screen.setCursor(1, 1);
                 Brain.Screen.print("Selection:");
                 Brain.Screen.setCursor(2, 1);
-                Brain.Screen.print("Rectangle");
+                Brain.Screen.print("-Rectangle-");
                 Brain.Screen.setCursor(3, 1);
                 Brain.Screen.print("> Circle");
                 Brain.Screen.setCursor(5, 2);
@@ -1274,40 +1251,43 @@ struct robot
             }
             else if (selection == 2)
             {
-                Brain.Screen.clearScreen();
+                
                 Brain.Screen.setCursor(1, 1);
                 Brain.Screen.print("Selection:");
                 Brain.Screen.setCursor(2, 1);
-                Brain.Screen.print("> Manual");
+                Brain.Screen.print("-Circle-");
                 Brain.Screen.setCursor(3, 1);
-                Brain.Screen.print("Circle");
+                Brain.Screen.print("> Manual");
                 Brain.Screen.setCursor(5, 2);
                 Brain.Screen.print("Tap LED to select");
             }
             else if (selection == 3)
             {
-                Brain.Screen.clearScreen();
+                
                 Brain.Screen.setCursor(1, 1);
                 Brain.Screen.print("Selection:");
                 Brain.Screen.setCursor(2, 1);
-                Brain.Screen.print("> Rectangle");
+                Brain.Screen.print("-Manual-");
                 Brain.Screen.setCursor(3, 1);
-                Brain.Screen.print("Circle");
+                Brain.Screen.print("> Rectangle");
                 Brain.Screen.setCursor(5, 2);
                 Brain.Screen.print("Tap LED to select");
             }
 
             if (Brain.buttonRight.pressing())
             {
+                Brain.Screen.clearScreen();
                 selection++;
                 if (selection > 3)
                 {
                     selection = 1;
                 }
+
                 wait(500, msec);
             }
             else if (Brain.buttonLeft.pressing())
             {
+                Brain.Screen.clearScreen();
                 selection--;
                 if (selection < 1)
                 {
@@ -1391,12 +1371,14 @@ int main()
         TOUCHLED.setColor(color::green);
         TOUCHLED.setColor(color::yellow);
         SweepBot.automaticCleaning();
+        Brain.programStop();
     }
     else if (selection == 2)
     {
         TOUCHLED.setColor(color::green);
         TOUCHLED.setColor(color::yellow);
         SweepBot.circle_algo();
+        Brain.programStop();
     }
     else if (selection == 3)
     {
@@ -1404,58 +1386,6 @@ int main()
         TOUCHLED.setColor(color::yellow);
         SweepBot.Manual_Control();
     }
-
-    /*
-    timer selectionTimer;
-    int hue = 0;
-    bool circular = false;
-
-    Brain.Screen.clearScreen();
-    Brain.Screen.setCursor(1,1);
-    Brain.Screen.print("Press Touchled to make selection");
-
-
-
-    // Rainbow cycle while waiting for a selection.
-    // setColor(int) treats the number as a 0xRRGGBB value, not a hue,
-    // so convert the hue (0-359 degrees) to a colour first.
-    while (!TOUCHLED.pressing()){
-      color rainbow;
-      rainbow.hsv(hue, 1.0, 1.0); // hue, saturation, value
-      TOUCHLED.setColor(rainbow);
-      hue = (hue + 5) % 360;
-      wait(50, msec);
-    }
-
-    // Wait for the first tap to end.
-    while (TOUCHLED.pressing()){
-        wait(10, msec);
-      }
-
-    TOUCHLED.setColor(color::blue);
-    Brain.Screen.clearScreen();
-    Brain.Screen.setCursor(1, 1);
-    Brain.Screen.print("Rectangle selected");
-    Brain.Screen.setCursor(2, 1);
-    Brain.Screen.print("Tap again for Circle within 10 seconds");
-    selectionTimer.reset();
-
-    // Toggles Circular as soon as a second tap is detected.
-    while (!circular && selectionTimer.time(msec) < 3000)
-    {
-        circular = TOUCHLED.pressing();
-        if (!circular)
-            wait(10, msec);
-    }
-
-    while (TOUCHLED.pressing())
-        wait(10, msec);
-
-    if (circular)
-        SweepBot.circle_algo();
-    else
-        SweepBot.automaticCleaning();
-      */
 
     return 0;
 }
