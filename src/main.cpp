@@ -588,7 +588,7 @@ struct robot
         timer driveTimer;
         driveTimer.clear();
         bool reachedEdge = false;
-        while (!reachedEdge)
+        while (!reachedEdge) //YUNHAO LOOK HERE, PUT COLLISION DETECTION HERE
         {
             if (BUMPER.pressing())
             {
