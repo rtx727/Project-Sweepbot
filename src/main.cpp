@@ -949,7 +949,7 @@ struct robot
         moveTimer.reset();
 
         while (travelled < targetDegree &&
-               moveTimer.time(msec) - pausedMS < timeoutMS)
+               moveTimer.time(msec) - pausedMS < timeoutMS) //ADD COLLISION DETECTION HERE
         {
             float pauseMS = pauseForObstacle();
             if (pauseMS > 0)
