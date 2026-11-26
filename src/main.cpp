@@ -206,6 +206,8 @@ struct collisionMonitor{
     int collisionCount;
     timer collisionTimer;
     float previousTime;
+    float collisionWindowStart;
+    float collisionDetectedAt;
 
     //Records acceleration values from the last loop to calculate jerk
     float prevAx;
@@ -224,6 +226,8 @@ struct collisionMonitor{
         collisionCount = 0;
         collisionTimer.reset();
         previousTime = 0;
+        collisionWindowStart = 0;
+        collisionDetectedAt = 0;
         prevGx = BrainInertial.gyroRate(xaxis, dps);
         prevGy = BrainInertial.gyroRate(yaxis, dps);
         prevGz = BrainInertial.gyroRate(zaxis, dps);
@@ -238,10 +242,21 @@ struct collisionMonitor{
 
     bool detectCollisionLin(){
         const float JERK_THRESHOLD = 6.0; //Collision threshold in m/s^3 
+        const float COUNT_WINDOW_S = 0.15f;
+        const float FLAG_HOLD_S = 0.5f;
         
         //Calculate time difference since last reading
         float currentTime = collisionTimer.time(msec) / 1000.0; // Convert to seconds
         float dt = currentTime - previousTime;
+
+        if (collisionDetected && currentTime - collisionDetectedAt >= FLAG_HOLD_S){
+            collisionDetected = false;
+            collisionCount = 0;
+        }
+        if (!collisionDetected && collisionCount > 0 &&
+            currentTime - collisionWindowStart >= COUNT_WINDOW_S){
+            collisionCount = 0;
+        }
 
         float currAx = BrainInertial.acceleration(xaxis);
         float currAy = BrainInertial.acceleration(yaxis);    
@@ -256,22 +271,17 @@ struct collisionMonitor{
             //Calculate jerk magnitude
             float jerk = sqrt(jerkX * jerkX + jerkY * jerkY + jerkZ * jerkZ);
 
-            //If jerk exceeds threshold, increment collision count
-            if (jerk > JERK_THRESHOLD){
+            if (!collisionDetected && jerk > JERK_THRESHOLD){
+                if (collisionCount == 0)
+                    collisionWindowStart = currentTime;
                 collisionCount++;
-            }
-
-            //Only register collison if loop happens more than 2 times but less than 5 times
-            if (collisionCount > 2 && collisionCount < 5 && !collisionDetected){
-                collisionDetected = true;
-                Brain.Screen.clearScreen();
-                Brain.Screen.setCursor(1, 1);
-                Brain.Screen.print("Collision Detected");
-            }
-            //Probably not a collision if it happens more than 5 times in a row, reset the counter
-            else if (collisionCount >= 5){
-                collisionDetected = false;
-                collisionCount = 0;
+                if (collisionCount >= 3){
+                    collisionDetected = true;
+                    collisionDetectedAt = currentTime;
+                    Brain.Screen.clearScreen();
+                    Brain.Screen.setCursor(1, 1);
+                    Brain.Screen.print("Collision Detected");
+                }
             }
             
         }
@@ -1135,9 +1145,6 @@ struct robot
 
     float pauseForObstacle()
     {
-        if (!BUMPER.pressing())
-            return 0;
-
         motors.stop(brake);
         timer pauseTimer;
         pauseTimer.reset();
