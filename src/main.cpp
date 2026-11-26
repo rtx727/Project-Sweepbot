@@ -6,6 +6,7 @@
 #include <math.h>
 #include <string.h>
 
+
 #include "vex.h"
 
 using namespace vex;
@@ -13,39 +14,42 @@ using namespace vex;
 // Brain should be defined by default
 brain Brain;
 
-// START IQ MACROS
-#define waitUntil(condition) \
-    do                       \
-    {                        \
-        wait(5, msec);       \
-    } while (!(condition))
 
-#define repeat(iterations) \
-    for (int iterator = 0; iterator < iterations; iterator++)
+// START IQ MACROS
+#define waitUntil(condition)                                                   \
+  do {                                                                         \
+    wait(5, msec);                                                             \
+  } while (!(condition))
+
+#define repeat(iterations)                                                     \
+  for (int iterator = 0; iterator < iterations; iterator++)
 // END IQ MACROS
+
 
 // Robot configuration code.
 inertial BrainInertial = inertial();
 
+
 // generating and setting random seed
-void initializeRandomSeed()
-{
-    wait(100, msec);
-    double xAxis = BrainInertial.acceleration(xaxis) * 1000;
-    double yAxis = BrainInertial.acceleration(yaxis) * 1000;
-    double zAxis = BrainInertial.acceleration(zaxis) * 1000;
-    // Combine these values into a single integer
-    int seed = int(
-        xAxis + yAxis + zAxis);
-    // Set the seed
-    srand(seed);
+void initializeRandomSeed(){
+  wait(100,msec);
+  double xAxis = BrainInertial.acceleration(xaxis) * 1000;
+  double yAxis = BrainInertial.acceleration(yaxis) * 1000;
+  double zAxis = BrainInertial.acceleration(zaxis) * 1000;
+  // Combine these values into a single integer
+  int seed = int(
+    xAxis + yAxis + zAxis
+  );
+  // Set the seed
+  srand(seed); 
 }
 
-void vexcodeInit()
-{
 
-    // Initializing random seed.
-    initializeRandomSeed();
+
+void vexcodeInit() {
+
+  // Initializing random seed.
+  initializeRandomSeed(); 
 }
 
 #pragma endregion VEXcode Generated Robot Configuration
@@ -78,7 +82,6 @@ motor COLLECTOR(PORT2, false); // seesaw collector
 touchled TOUCHLED(PORT8);
 
 // Structs
-
 
 // Struct to hold PID controller values and perform calculations
 struct PIDcontroller
@@ -207,8 +210,6 @@ struct collisionMonitor{
     int collisionCount;
     timer collisionTimer;
     float previousTime;
-    float collisionWindowStart;
-    float collisionDetectedAt;
 
     //Records acceleration values from the last loop to calculate jerk
     float prevAx;
@@ -227,8 +228,6 @@ struct collisionMonitor{
         collisionCount = 0;
         collisionTimer.reset();
         previousTime = 0;
-        collisionWindowStart = 0;
-        collisionDetectedAt = 0;
         prevGx = BrainInertial.gyroRate(xaxis, dps);
         prevGy = BrainInertial.gyroRate(yaxis, dps);
         prevGz = BrainInertial.gyroRate(zaxis, dps);
@@ -242,22 +241,11 @@ struct collisionMonitor{
     }
 
     bool detectCollisionLin(){
-        const float JERK_THRESHOLD = 6.0; //Collision threshold in m/s^3 
-        const float COUNT_WINDOW_S = 0.15f;
-        const float FLAG_HOLD_S = 0.5f;
+        const float JERK_THRESHOLD = 10.0; //Collision threshold in m/s^3 
         
         //Calculate time difference since last reading
         float currentTime = collisionTimer.time(msec) / 1000.0; // Convert to seconds
         float dt = currentTime - previousTime;
-
-        if (collisionDetected && currentTime - collisionDetectedAt >= FLAG_HOLD_S){
-            collisionDetected = false;
-            collisionCount = 0;
-        }
-        if (!collisionDetected && collisionCount > 0 &&
-            currentTime - collisionWindowStart >= COUNT_WINDOW_S){
-            collisionCount = 0;
-        }
 
         float currAx = BrainInertial.acceleration(xaxis);
         float currAy = BrainInertial.acceleration(yaxis);    
@@ -272,17 +260,22 @@ struct collisionMonitor{
             //Calculate jerk magnitude
             float jerk = sqrt(jerkX * jerkX + jerkY * jerkY + jerkZ * jerkZ);
 
-            if (!collisionDetected && jerk > JERK_THRESHOLD){
-                if (collisionCount == 0)
-                    collisionWindowStart = currentTime;
+            //If jerk exceeds threshold, increment collision count
+            if (jerk > JERK_THRESHOLD){
                 collisionCount++;
-                if (collisionCount >= 3){
-                    collisionDetected = true;
-                    collisionDetectedAt = currentTime;
-                    Brain.Screen.clearScreen();
-                    Brain.Screen.setCursor(1, 1);
-                    Brain.Screen.print("Collision Detected");
-                }
+            }
+
+            //Only register collison if loop happens more than 2 times but less than 5 times
+            if (collisionCount > 2 && collisionCount < 5 && !collisionDetected){
+                collisionDetected = true;
+                Brain.Screen.clearScreen();
+                Brain.Screen.setCursor(1, 1);
+                Brain.Screen.print("Collision Detected");
+            }
+            //Probably not a collision if it happens more than 5 times in a row, reset the counter
+            else if (collisionCount >= 5){
+                collisionDetected = false;
+                collisionCount = 0;
             }
             
         }
@@ -737,18 +730,19 @@ struct robot
         driveTimer.clear();
         bool reachedEdge = false;
         while (!reachedEdge )
-        {
-            if (BUMPER.pressing() || collisionMonitor.detectCollisionLin()) //RICHARD LOOK HERE on this line
-            {
-                pausedMS += pauseForObstacle();
-                drivePID.previousError = 0;
-                drivePID.previousTime = drivePID.PIDtimer.time(msec);
-            }
-
+        {   
             const bool leftOn = DISTANCE.isObjectDetected() && DISTANCE.objectDistance(mm) < 100;
             const bool rightOn = OPTICAL.isNearObject();
+            bool collidetect = collisionMonitor.detectCollisionLin();
             const float travelledMM = driveEncoderMM() - startMM;
             const float elapsedMS = driveTimer.time(msec) - pausedMS;
+            if(leftOn && rightOn){
+            if (BUMPER.pressing() || collidetect) //RICHARD LOOK HERE on this line
+            {
+                pausedMS += pauseForObstacle_heading();
+                drivePID.previousError = 0;
+                drivePID.previousTime = drivePID.PIDtimer.time(msec);
+            }}
             if (!leftOn || !rightOn)
             {
                 motors.stop(brake);
@@ -1143,9 +1137,11 @@ struct robot
         }
         return travelled >= targetDegree;
     }
-
-    float pauseForObstacle()
+    float pauseForObstacle_heading()
     {
+        if (!collisionMonitor.detectCollisionLin())
+            return 0;
+
         motors.stop(brake);
         timer pauseTimer;
         pauseTimer.reset();
@@ -1171,6 +1167,41 @@ struct robot
             if (!BUMPER.pressing()){
                 collisionMonitor.collisionCount = 0;
                 collisionMonitor.collisionDetected = false;
+                pause = false;
+            }
+        }
+
+        TOUCHLED.setColor(color::green);
+        return pauseTimer.time(msec);
+    }
+    float pauseForObstacle()
+    {
+        if (!BUMPER.pressing())
+            return 0;
+
+        motors.stop(brake);
+        timer pauseTimer;
+        pauseTimer.reset();
+        TOUCHLED.setColor(color::red);
+        Brain.Screen.clearScreen();
+        Brain.Screen.setCursor(1, 1);
+        Brain.Screen.print("Remove obstacle");
+        Brain.Screen.setCursor(2, 1);
+        Brain.Screen.print("Then tap Touch");
+
+        // Require the obstacle to be removed, then a NEW Touch press and release.
+        bool pause = true;
+        while (pause)
+        {
+            while (BUMPER.pressing() || TOUCHLED.pressing())  
+                wait(20, msec);
+            while (!TOUCHLED.pressing() && !BUMPER.pressing())
+                wait(20, msec);
+            if (BUMPER.pressing())
+                continue;
+            while (TOUCHLED.pressing() && !BUMPER.pressing())
+                wait(20, msec);
+            if (!BUMPER.pressing()){
                 pause = false;
             }
         }
