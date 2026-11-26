@@ -210,6 +210,8 @@ struct collisionMonitor{
     int collisionCount;
     timer collisionTimer;
     float previousTime;
+    float collisionWindowStart;
+    float collisionDetectedAt;
 
     //Records acceleration values from the last loop to calculate jerk
     float prevAx;
@@ -238,6 +240,22 @@ struct collisionMonitor{
     ~collisionMonitor()
     {
         // Destructor
+    }
+
+    void reset()
+    {
+        collisionDetected = false;
+        collisionCount = 0;
+        collisionTimer.reset();
+        previousTime = 0;
+        collisionWindowStart = 0;
+        collisionDetectedAt = 0;
+        prevAx = BrainInertial.acceleration(xaxis);
+        prevAy = BrainInertial.acceleration(yaxis);
+        prevAz = BrainInertial.acceleration(zaxis);
+        prevGx = BrainInertial.gyroRate(xaxis, dps);
+        prevGy = BrainInertial.gyroRate(yaxis, dps);
+        prevGz = BrainInertial.gyroRate(zaxis, dps);
     }
 
     bool detectCollisionLin(){
@@ -724,6 +742,7 @@ struct robot
         // Let the original PID's 500 ms startup interval finish while stationary
         // Otherwise its small correction output lets each new row drift sideway
         wait(500, msec);
+        collisionMonitor.reset();
         const float MAX_CORRECTION = 10;
 
         timer driveTimer;
@@ -1092,6 +1111,7 @@ struct robot
 
         //RICHARD LOOK HERE
         float pauseMS = 0;
+        collisionMonitor.reset();
 
         while (travelled < targetDegree &&
                moveTimer.time(msec) - pausedMS < timeoutMS) //ADD COLLISION DETECTION HERE
