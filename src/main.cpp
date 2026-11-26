@@ -1135,7 +1135,7 @@ struct robot
 
     float pauseForObstacle()
     {
-        if (!BUMPER.pressing())
+        if (!BUMPER.pressing() && !collisionMonitor.detectCollisionLin())
             return 0;
 
         motors.stop(brake);
@@ -1160,9 +1160,11 @@ struct robot
                 continue;
             while (TOUCHLED.pressing() && !BUMPER.pressing())
                 wait(20, msec);
-            if (!BUMPER.pressing())
+            if (!BUMPER.pressing()){
+                collisionMonitor.collisionCount = 0;
+                collisionMonitor.collisionDetected = false;
                 pause = false;
-            continue;
+            }
         }
 
         TOUCHLED.setColor(color::green);
