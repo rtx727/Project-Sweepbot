@@ -65,7 +65,7 @@ using namespace std;
 // A global instance of vex::brain used for printing to the IQ2 brain screen
 // vex::brain Brain;
 
-// define your global instances of motors and other devices here
+// define global instances of motors and other devices
 motor RM(PORT12, bool(reverse));
 motor LM(PORT7, bool(forward));
 motor BRUSH(PORT4, bool(forward));
@@ -569,7 +569,7 @@ struct robot
         if (cleaningFailed)
             return;
         motors.stop(brake);
-        // Use the original 40% for initial straight driving; survey the perimeter at 20%.
+        // Use the original 40% for initial straight driving; survey the perimeter at 30%.
         float velocity = perimeter ? 30 : 40;
         const float startMM = driveEncoderMM();
         float pausedMS = 0;
@@ -645,7 +645,7 @@ struct robot
                     return;
                 }
                 reachedEdge = true;
-                continue; // still need testing
+                continue;
             }
             const float limitMM = expectedMM > 0 ? expectedMM + 120 : 4000;
             if (elapsedMS > 65000 || travelledMM >= limitMM)
@@ -804,9 +804,9 @@ struct robot
         rows = (int)ceil(widthMM / MAX_STEP_MM) + 1; // Add a row to eliminate dead zone
         stepMM = widthMM / (rows - 1);
 
-        // Keep the original row loop. Each row follows one of two fixed headings.
         float shiftedMM = 0;
         bool finished = false;
+        //row cleaning loop
         for (int row = 0; row < rows; ++row)
         {
             const float heading = edgeHeading + 180 + (row % 2) * 180;
@@ -1028,6 +1028,7 @@ struct robot
         TOUCHLED.setColor(color::green);
         return pauseTimer.time(msec);
     }
+
     void circle_algo()
     {
         const float CLEANING_WIDTH_MM = 210.0f;
