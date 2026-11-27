@@ -737,7 +737,7 @@ struct robot
             return;
         motors.stop(brake);
         // Use the original 40% for initial straight driving; survey the perimeter at 20%.
-        float velocity = perimeter ? 30 : 40;
+        float velocity = perimeter ? 20 : 40;
         const float startMM = driveEncoderMM();
         float pausedMS = 0;
         int sideCorrections = 0;
