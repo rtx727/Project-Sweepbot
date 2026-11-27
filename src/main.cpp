@@ -1061,7 +1061,7 @@ struct robot
     void Manual_Control()
     {
         motors.stop(brake);
-
+        COLLECTOR.resetPosition();
         bool running = setCollector(0);
         int collectorState = 0;
 
