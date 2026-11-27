@@ -710,7 +710,7 @@ struct robot
         if (cleaningFailed)
             return;
         motors.stop(brake);
-        // Use the original 40% for initial straight driving; survey the perimeter at 20%.
+        // Use 30% base speed along the perimeter and 40% otherwise.
         float velocity = perimeter ? 30 : 40;
         const float startMM = driveEncoderMM();
         float pausedMS = 0;
@@ -787,7 +787,7 @@ struct robot
                     return;
                 }
                 reachedEdge = true;
-                continue; // still need testing
+                continue;
             }
             const float limitMM = expectedMM > 0 ? expectedMM + 120 : 4000;
             if (elapsedMS > 65000 || travelledMM >= limitMM)
@@ -817,7 +817,7 @@ struct robot
     // Params: side = -1 left side down, 0 level (both sides up), +1 right side down
     // Setup: at the start the user lowers the collector onto its RIGHT side and
     //        COLLECTOR.resetPosition() is called, so 0 deg = right down,
-    //        -8.25 deg = level, -16.5 deg = left down (measured range is +-9.5 deg from level)
+    //        -8.25 deg = level, -16.5 deg = left down
     // Outputs: true if it got there (going down, touching the table early counts)
     bool setCollector(int side)
     {
@@ -1030,7 +1030,7 @@ struct robot
             if (fabs(turnInput) < 10)
                 turnInput = 0;
 
-            // Left turn: -1, right turn: +1, straight/stopped: 0.
+            // Left turn: +1, right turn: -1, straight/stopped: 0.
             int desiredCollector = 0;
 
             if (turnInput < 0)
@@ -1139,9 +1139,6 @@ struct robot
     }
     float pauseForObstacle_heading()
     {
-        if (!collisionMonitor.detectCollisionLin())
-            return 0;
-
         motors.stop(brake);
         timer pauseTimer;
         pauseTimer.reset();
