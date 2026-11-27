@@ -79,7 +79,6 @@ motor_group motors(RM, LM);
 optical OPTICAL(PORT6); // right side cliff sensor
 controller CONTROLLER;
 motor COLLECTOR(PORT2, false); //seesaw collector
-// inertial BrainInertial = inertial();
 touchled TOUCHLED(PORT8);
 
 // Structs
@@ -187,6 +186,7 @@ struct PIDcontroller
     }
 };
 
+/*
 // Struct to track robot position and heading
 struct pose
 {
@@ -205,6 +205,7 @@ struct pose
         // Destructor
     }
 };
+*/
 
 struct collisionMonitor{
     bool collisionDetected;
@@ -262,7 +263,7 @@ struct collisionMonitor{
     }
 
     bool detectCollisionLin(){
-        const float JERK_THRESHOLD = 10.0; //Collision threshold in m/s^3 
+        const float JERK_THRESHOLD = 13.0; //Collision threshold in m/s^3 
         const float COUNT_WINDOW_S = 0.15f;
         const float FLAG_HOLD_S = 0.5f;
 
@@ -372,7 +373,8 @@ struct collisionMonitor{
 // Contains movement functions
 struct robot
 {
-    pose robot_pose;
+    const float MAX_SPEED = 80.0; // Max speed in percent for manual mode
+    //pose robot_pose;
     collisionMonitor collisionMonitor;
     float absoluteHeading;
     const float BACK_MM = 100.0;           // Distance to back up when finding absolute heading
@@ -385,7 +387,7 @@ struct robot
     // Default constructor
     robot()
     {
-        robot_pose = pose();
+        //robot_pose = pose();
         absoluteHeading = 0;
         LED_color = 0;
         cleaningFailed = false;
@@ -406,6 +408,9 @@ struct robot
         } // Allow time for calibration
 
     BrainInertial.resetRotation();
+            // Full brightness so every colour is clearly visible
+        TOUCHLED.setBrightness(100);
+
 }
 
     float driveEncoderMM()
@@ -656,7 +661,6 @@ struct robot
         // Perform movement until error is acceptable
         while (!settled)
         {
-            pauseForObstacle();
             float pauseMS = pauseForObstacle();
             if (pauseMS > 0)
             {
@@ -772,7 +776,7 @@ struct robot
             {
                 motors.stop(brake);
 
-                // On the clockwise perimeter the outside edge is on the left.
+                // On the clockwise perimeter the outside edge is on the left
                 if (perimeter && !leftOn && rightOn)
                 {
                     if (++sideCorrections > 4)
@@ -785,7 +789,7 @@ struct robot
                     if (cleaningFailed)
                         return;
 
-                    // If the pivot restores both sensors, move a little inward.
+                    // If the pivot restores both sensors, move a little inward
                     if (DISTANCE.isObjectDetected() && DISTANCE.objectDistance(mm) < 100 &&
                         OPTICAL.isNearObject())
                     {
@@ -971,7 +975,7 @@ struct robot
         rows = (int)ceil(widthMM / MAX_STEP_MM) + 1; // Add a row to eliminate dead zone
         stepMM = widthMM / (rows - 1);
 
-        // Keep the original row loop. Each row follows one of two fixed headings.
+        // Keep the original row loop, Each row follows one of two fixed headings
         float shiftedMM = 0;
         bool finished = false;
         for (int row = 0; row < rows; ++row)
@@ -999,7 +1003,8 @@ struct robot
             }
         }
 
-        // Move to the side edge, back up for turning clearance, then clean one final pass opposite the previous row.
+        //Fixing "Dead zone"
+        // Move to the side edge, back up for turning clearance, then clean one final pass opposite the previous row
             turn_heading(headingError(edgeHeading + 270));
             if (cleaningFailed)
                 return;
@@ -1189,7 +1194,40 @@ struct robot
         return travelled >= targetDegree;
     }
 
+ float pauseForObstacle_heading() // For straight driving
+    {
+        if (!collisionMonitor.detectCollisionLin())
+            return 0;
 
+        motors.stop(brake);
+        timer pauseTimer;
+        pauseTimer.reset();
+        TOUCHLED.setColor(color::red);
+        Brain.Screen.clearScreen();
+        Brain.Screen.setCursor(1, 1);
+        Brain.Screen.print("Remove obstacle");
+        Brain.Screen.setCursor(2, 1);
+        Brain.Screen.print("Then tap Touch");
+
+        // Require the obstacle to be removed, then a NEW Touch press and release.
+        bool pause = true;
+        while (pause)
+        {
+
+            while (BUMPER.pressing() || TOUCHLED.pressing())
+                wait(20, msec);
+            while (!TOUCHLED.pressing() && !BUMPER.pressing())
+                wait(20, msec);
+            while (TOUCHLED.pressing() && !BUMPER.pressing())
+                wait(20, msec);
+            Brain.playNote(6, 9, 250);
+            TOUCHLED.setColor(color::red);
+            task::sleep(200);
+        }
+        Brain.Screen.clearScreen();
+        TOUCHLED.setColor(color::green);
+        return pauseTimer.time(msec);
+    }
 
 float pauseForObstacle()
 {
@@ -1221,8 +1259,13 @@ float pauseForObstacle()
             if (!BUMPER.pressing()){
                 pause = false;
             }
+            Brain.playNote(6, 9, 250);
+            TOUCHLED.setColor(color::red);
+            task::sleep(200);
+            TOUCHLED.off();
         }
 
+        Brain.Screen.clearScreen();
         TOUCHLED.setColor(color::green);
         return pauseTimer.time(msec);
     }
@@ -1263,7 +1306,7 @@ float pauseForObstacle()
         TOUCHLED.setColor(color::green);
         BRUSH.spin(reverse, 50, percent);
 
-        // Face the first rim. The alignment function backs up by BACK_MM
+        // Face the first rim, The alignment function backs up by BACK_MM
         drivingHeading();
         if (cleaningFailed)
             return;
@@ -1426,7 +1469,90 @@ float pauseForObstacle()
         Brain.Screen.print("Spokes %d + rim", spokeCount);
     }
 
+        // Allow users to select cleaning mode
+    static int cleaningSelection()
+    {
+        // 1 for rectangle, 2 for circle, 3 for manual
+        int selection = 1;
+
+        do
+        {
+            // find the right display
+            if (selection == 1)
+            {
+
+                Brain.Screen.setCursor(1, 1);
+                Brain.Screen.print("Selection:");
+                Brain.Screen.setCursor(2, 1);
+                Brain.Screen.print("-Rectangle-");
+                Brain.Screen.setCursor(3, 1);
+                Brain.Screen.print("> Circle");
+                Brain.Screen.setCursor(5, 2);
+                Brain.Screen.print("Tap LED to select");
+            }
+            else if (selection == 2)
+            {
+
+                Brain.Screen.setCursor(1, 1);
+                Brain.Screen.print("Selection:");
+                Brain.Screen.setCursor(2, 1);
+                Brain.Screen.print("-Circle-");
+                Brain.Screen.setCursor(3, 1);
+                Brain.Screen.print("> Manual");
+                Brain.Screen.setCursor(5, 2);
+                Brain.Screen.print("Tap LED to select");
+            }
+            else if (selection == 3)
+            {
+
+                Brain.Screen.setCursor(1, 1);
+                Brain.Screen.print("Selection:");
+                Brain.Screen.setCursor(2, 1);
+                Brain.Screen.print("-Manual-");
+                Brain.Screen.setCursor(3, 1);
+                Brain.Screen.print("> Rectangle");
+                Brain.Screen.setCursor(5, 2);
+                Brain.Screen.print("Tap LED to select");
+            }
+
+            if (Brain.buttonRight.pressing())
+            {
+                Brain.Screen.clearScreen();
+                selection++;
+                if (selection > 3)
+                {
+                    selection = 1;
+                }
+
+                wait(500, msec);
+            }
+            else if (Brain.buttonLeft.pressing())
+            {
+                Brain.Screen.clearScreen();
+                selection--;
+                if (selection < 1)
+                {
+                    selection = 3;
+                }
+                wait(500, msec);
+            }
+
+        } while (!TOUCHLED.pressing());
+        // wait for release
+        TOUCHLED.setColor(color::red);
+        while (TOUCHLED.pressing())
+        {
+            wait(10, msec);
+        }
+        return selection;
+    }
+
 };
+
+
+
+
+
 /*
 // Test functions----------------------------------------------------------------------------------
 void testPIDTurning()
@@ -1449,87 +1575,35 @@ void test_find_absolute_heading()
     find_absolute_heading();
 }
 
-// Event functions
-void endAutonomous(bool &end_autonomous)
-{
-    end_autonomous = true;
-    TOUCHLED.setColor(color::red);
-    motors.stop(brake);
-    Brain.Screen.clearScreen();
-    Brain.Screen.setCursor(1, 1);
-    Brain.Screen.print("End Auto");
-}
-
-// Button functions
-void handle_TOUCLED(bool &end_autonomous, color &TOUCLED_COLOR)
-{
-    if (TOUCLED_COLOR == color::red)
-    {
-        endAutonomous(end_autonomous);
-    }
-}
 */
 // -------------------------------------- MAIN ---------------------------------------------------
-// int main()
-// {
-//     //Declare robot object
-//     robot SweepBot;
-//     SweepBot.automaticCleaning();
-//     return 0;
-// }
-//NEW int main
 
-int main(){
-  robot SweepBot;
-  timer selectionTimer;
-  int hue = 0;
-  bool circular = false;
-  
-  Brain.Screen.clearScreen();
-  Brain.Screen.setCursor(1,1);
-  Brain.Screen.print("Press Touchled to make selection");
 
-  // Full brightness so every colour is clearly visible
-  TOUCHLED.setBrightness(100);
+int main()
+{
+    robot SweepBot;
 
-  // Rainbow cycle while waiting for a selection.
-  // setColor(int) treats the number as a 0xRRGGBB value, not a hue,
-  // so convert the hue (0-359 degrees) to a colour first.
-  while (!TOUCHLED.pressing()){
-    color rainbow;
-    rainbow.hsv(hue, 1.0, 1.0); // hue, saturation, value
-    TOUCHLED.setColor(rainbow);
-    hue = (hue + 5) % 360;
-    wait(50, msec);
-  }
-
-  // Wait for the first tap to end.
-  while (TOUCHLED.pressing())
-      wait(10, msec);
- 
-  TOUCHLED.setColor(color::blue);
-  Brain.Screen.clearScreen();
-  Brain.Screen.setCursor(1, 1);
-  Brain.Screen.print("Rectangle selected");
-  Brain.Screen.setCursor(2, 1);
-  Brain.Screen.print("Tap again for Circle within 10 seconds");
-  selectionTimer.reset();
-
-  // Toggles Circular as soon as a second tap is detected.
-  while (!circular && selectionTimer.time(msec) < 3000)
-  {
-      circular = TOUCHLED.pressing();
-      if (!circular)
-          wait(10, msec);
-  }
-
-  while (TOUCHLED.pressing())
-      wait(10, msec);
-      
-  if (circular)
-      SweepBot.circle_algo();
-  else
-      SweepBot.automaticCleaning();
-
+    int selection = 0;
+    // Get use to select the cleaning mode
+    selection = robot::cleaningSelection();
+    if (selection == 1)
+    {
+        TOUCHLED.setColor(color::green);
+        TOUCHLED.setColor(color::yellow);
+        SweepBot.automaticCleaning();
+    }
+    else if (selection == 2)
+    {
+        TOUCHLED.setColor(color::green);
+        TOUCHLED.setColor(color::yellow);
+        SweepBot.circle_algo();
+    }
+    else if (selection == 3)
+    {
+        TOUCHLED.setColor(color::green);
+        TOUCHLED.setColor(color::yellow);
+        SweepBot.Manual_Control();
+    }
+    Brain.programStop();
     return 0;
 }
