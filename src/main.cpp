@@ -6,7 +6,6 @@
 #include <math.h>
 #include <string.h>
 
-
 #include "vex.h"
 
 using namespace vex;
@@ -14,42 +13,39 @@ using namespace vex;
 // Brain should be defined by default
 brain Brain;
 
-
 // START IQ MACROS
-#define waitUntil(condition)                                                   \
-  do {                                                                         \
-    wait(5, msec);                                                             \
-  } while (!(condition))
+#define waitUntil(condition) \
+    do                       \
+    {                        \
+        wait(5, msec);       \
+    } while (!(condition))
 
-#define repeat(iterations)                                                     \
-  for (int iterator = 0; iterator < iterations; iterator++)
+#define repeat(iterations) \
+    for (int iterator = 0; iterator < iterations; iterator++)
 // END IQ MACROS
-
 
 // Robot configuration code.
 inertial BrainInertial = inertial();
 
-
 // generating and setting random seed
-void initializeRandomSeed(){
-  wait(100,msec);
-  double xAxis = BrainInertial.acceleration(xaxis) * 1000;
-  double yAxis = BrainInertial.acceleration(yaxis) * 1000;
-  double zAxis = BrainInertial.acceleration(zaxis) * 1000;
-  // Combine these values into a single integer
-  int seed = int(
-    xAxis + yAxis + zAxis
-  );
-  // Set the seed
-  srand(seed); 
+void initializeRandomSeed()
+{
+    wait(100, msec);
+    double xAxis = BrainInertial.acceleration(xaxis) * 1000;
+    double yAxis = BrainInertial.acceleration(yaxis) * 1000;
+    double zAxis = BrainInertial.acceleration(zaxis) * 1000;
+    // Combine these values into a single integer
+    int seed = int(
+        xAxis + yAxis + zAxis);
+    // Set the seed
+    srand(seed);
 }
 
+void vexcodeInit()
+{
 
-
-void vexcodeInit() {
-
-  // Initializing random seed.
-  initializeRandomSeed(); 
+    // Initializing random seed.
+    initializeRandomSeed();
 }
 
 #pragma endregion VEXcode Generated Robot Configuration
@@ -186,6 +182,7 @@ struct PIDcontroller
     }
 };
 
+/*
 // Struct to track robot position and heading
 struct pose
 {
@@ -204,23 +201,26 @@ struct pose
         // Destructor
     }
 };
+*/
 
-struct collisionMonitor{
+struct collisionMonitor
+{
     bool collisionDetected;
     int collisionCount;
     timer collisionTimer;
     float previousTime;
+    float collisionWindowStart;
+    float collisionDetectedAt;
 
-    //Records acceleration values from the last loop to calculate jerk
+    // Records acceleration values from the last loop to calculate jerk
     float prevAx;
     float prevAy;
     float prevAz;
 
-    //Records rotational values from last loop to find angular acceleration
+    // Records rotational values from last loop to find angular acceleration
     float prevGx;
     float prevGy;
     float prevGz;
-
 
     collisionMonitor()
     {
@@ -228,6 +228,8 @@ struct collisionMonitor{
         collisionCount = 0;
         collisionTimer.reset();
         previousTime = 0;
+        collisionWindowStart = 0;
+        collisionDetectedAt = 0;
         prevGx = BrainInertial.gyroRate(xaxis, dps);
         prevGy = BrainInertial.gyroRate(yaxis, dps);
         prevGz = BrainInertial.gyroRate(zaxis, dps);
@@ -240,46 +242,73 @@ struct collisionMonitor{
         // Destructor
     }
 
-    bool detectCollisionLin(){
-        const float JERK_THRESHOLD = 13.0; //Collision threshold in m/s^3 
-        
-        //Calculate time difference since last reading
+    void reset()
+    {
+        collisionDetected = false;
+        collisionCount = 0;
+        collisionTimer.reset();
+        previousTime = 0;
+        collisionWindowStart = 0;
+        collisionDetectedAt = 0;
+        prevAx = BrainInertial.acceleration(xaxis);
+        prevAy = BrainInertial.acceleration(yaxis);
+        prevAz = BrainInertial.acceleration(zaxis);
+        prevGx = BrainInertial.gyroRate(xaxis, dps);
+        prevGy = BrainInertial.gyroRate(yaxis, dps);
+        prevGz = BrainInertial.gyroRate(zaxis, dps);
+    }
+
+    bool detectCollisionLin()
+    {
+        const float JERK_THRESHOLD = 13.0; // Collision threshold in m/s^3
+        const float COUNT_WINDOW_S = 0.15f;
+        const float FLAG_HOLD_S = 0.5f;
+
+        // Calculate time difference since last reading
         float currentTime = collisionTimer.time(msec) / 1000.0; // Convert to seconds
         float dt = currentTime - previousTime;
 
+        if (collisionDetected && currentTime - collisionDetectedAt >= FLAG_HOLD_S)
+        {
+            collisionDetected = false;
+            collisionCount = 0;
+        }
+        if (!collisionDetected && collisionCount > 0 &&
+            currentTime - collisionWindowStart >= COUNT_WINDOW_S)
+        {
+            collisionCount = 0;
+        }
+
         float currAx = BrainInertial.acceleration(xaxis);
-        float currAy = BrainInertial.acceleration(yaxis);    
+        float currAy = BrainInertial.acceleration(yaxis);
         float currAz = BrainInertial.acceleration(zaxis);
 
         // Do not divide by zero
-        if (dt > 0){
+        if (dt > 0)
+        {
             float jerkX = (currAx - prevAx) / dt;
             float jerkY = (currAy - prevAy) / dt;
             float jerkZ = (currAz - prevAz) / dt;
 
-            //Calculate jerk magnitude
+            // Calculate jerk magnitude
             float jerk = sqrt(jerkX * jerkX + jerkY * jerkY + jerkZ * jerkZ);
 
-            //If jerk exceeds threshold, increment collision count
-            if (jerk > JERK_THRESHOLD){
+            if (!collisionDetected && jerk > JERK_THRESHOLD)
+            {
+                if (collisionCount == 0)
+                    collisionWindowStart = currentTime;
                 collisionCount++;
+                if (collisionCount >= 3)
+                {
+                    collisionDetected = true;
+                    collisionDetectedAt = currentTime;
+                    Brain.Screen.clearScreen();
+                    Brain.Screen.setCursor(1, 1);
+                    Brain.Screen.print("Collision Detected");
+                }
             }
-
-            //Only register collison if loop happens more than 2 times but less than 5 times
-            if (collisionCount > 2 && collisionCount < 5 && !collisionDetected){
-                collisionDetected = true;
-                Brain.Screen.clearScreen();
-                Brain.Screen.setCursor(1, 1);
-                Brain.Screen.print("Collision Detected");
-            }
-            //Probably not a collision if it happens more than 5 times in a row, reset the counter
-            else if (collisionCount >= 5){
-                collisionDetected = false;
-                collisionCount = 0;
-            }
-            
         }
-        //Update member variables
+        // Update member variables
         previousTime = currentTime;
         prevAx = currAx;
         prevAy = currAy;
@@ -288,10 +317,11 @@ struct collisionMonitor{
     }
 
     // Detects collisions based on angular acceleration
-    bool detectCollisionAng(){
-        const float ANGULAR_ACCEL_THRESHOLD = 3200.0; //Collision threshold in degrees/s^2
+    bool detectCollisionAng()
+    {
+        const float ANGULAR_ACCEL_THRESHOLD = 3200.0; // Collision threshold in degrees/s^2
 
-        //Calculate time difference since last reading
+        // Calculate time difference since last reading
         float currentTime = collisionTimer.time(msec) / 1000.0; // Convert to seconds
         float dt = currentTime - previousTime;
 
@@ -299,24 +329,24 @@ struct collisionMonitor{
         float currGy = BrainInertial.gyroRate(yaxis, dps);
         float currGz = BrainInertial.gyroRate(zaxis, dps);
 
-        if (dt > 0){ // Do not divide by zero
-            //Calculate angular acceleration for each axis
+        if (dt > 0)
+        { // Do not divide by zero
+            // Calculate angular acceleration for each axis
             float dGX = (currGx - prevGx) / dt;
             float dGY = (currGy - prevGy) / dt;
             float dGZ = (currGz - prevGz) / dt;
 
-            //Calculate angular acceleration magnitude
+            // Calculate angular acceleration magnitude
             float angAccel = sqrt(dGX * dGX + dGY * dGY + dGZ * dGZ);
 
-     
-            //If angular acceleration exceeds threshold, increment collision count
-            if (angAccel > ANGULAR_ACCEL_THRESHOLD){
+            // If angular acceleration exceeds threshold, increment collision count
+            if (angAccel > ANGULAR_ACCEL_THRESHOLD)
+            {
                 collisionCount++;
                 collisionDetected = true;
                 Brain.Screen.clearScreen();
                 Brain.Screen.setCursor(1, 1);
                 Brain.Screen.print("Collision Detected");
-
             }
 
             /*
@@ -327,10 +357,9 @@ struct collisionMonitor{
                 Brain.Screen.setCursor(1, 1);
                 Brain.Screen.print("Collision Detected");
             }*/
-            
         }
 
-        //Update member variables
+        // Update member variables
         previousTime = currentTime;
         prevGx = currGx;
         prevGy = currGy;
@@ -340,16 +369,15 @@ struct collisionMonitor{
     }
 };
 
-
 // Struct for robot
 // Contains movement functions
 struct robot
 {
-    const double MAX_SPEED = 50.0; // Maximum speed of the robot
-    pose robot_pose;
+    const float MAX_SPEED = 80.0; // Max speed in percent
+    // pose robot_pose;
     collisionMonitor collisionMonitor;
     float absoluteHeading;
-    const float BACK_MM = 100.0;           // Distance to back up when finding absolute heading
+    const float BACK_MM = 100.0;          // Distance to back up when finding absolute heading
     const float EDGE_APPROACH_MM = 150.0; // How far before the expected edge a detection is still accepted
     bool cleaningFailed;
 
@@ -359,7 +387,7 @@ struct robot
     // Default constructor
     robot()
     {
-        robot_pose = pose();
+        // robot_pose = pose();
         absoluteHeading = 0;
         LED_color = 0;
         cleaningFailed = false;
@@ -543,7 +571,7 @@ struct robot
             // If error is outside acceptable limits, execute correction turn
             if (fabs(error) > ACCEPTABLE_TIME_ERROR)
             {
-                //float turnAmount = turnPID.calculatePID(error); //Degrees turned (MAX output is 100)
+                // float turnAmount = turnPID.calculatePID(error); //Degrees turned (MAX output is 100)
                 float turnAmount = fmin(8.0f, fmax(0.67f, fabs(error) * .014f));
 
                 // If error > 0, left_time was larger, right sensor hit the edge first
@@ -632,7 +660,6 @@ struct robot
         // Perform movement until error is acceptable
         while (!settled)
         {
-            pauseForObstacle();
             float pauseMS = pauseForObstacle();
             if (pauseMS > 0)
             {
@@ -710,8 +737,8 @@ struct robot
         if (cleaningFailed)
             return;
         motors.stop(brake);
-        // Use 30% base speed along the perimeter and 40% otherwise.
-        float velocity = perimeter ? 30 : 40;
+        // Use the original 40% for initial straight driving; survey the perimeter at 20%.
+        float velocity = perimeter ? 20 : 40;
         const float startMM = driveEncoderMM();
         float pausedMS = 0;
         int sideCorrections = 0;
@@ -724,30 +751,33 @@ struct robot
         // Let the original PID's 500 ms startup interval finish while stationary
         // Otherwise its small correction output lets each new row drift sideway
         wait(500, msec);
+        collisionMonitor.reset();
         const float MAX_CORRECTION = 10;
 
         timer driveTimer;
         driveTimer.clear();
         bool reachedEdge = false;
-        while (!reachedEdge )
-        {   
+        while (!reachedEdge)
+        {
             const bool leftOn = DISTANCE.isObjectDetected() && DISTANCE.objectDistance(mm) < 100;
             const bool rightOn = OPTICAL.isNearObject();
             bool collidetect = collisionMonitor.detectCollisionLin();
             const float travelledMM = driveEncoderMM() - startMM;
             const float elapsedMS = driveTimer.time(msec) - pausedMS;
-            if(leftOn && rightOn){
-            if (BUMPER.pressing() || collidetect) //RICHARD LOOK HERE on this line
+            if (leftOn && rightOn)
             {
-                pausedMS += pauseForObstacle_heading();
-                drivePID.previousError = 0;
-                drivePID.previousTime = drivePID.PIDtimer.time(msec);
-            }}
+                if (BUMPER.pressing() || collidetect) // RICHARD LOOK HERE on this line
+                {
+                    pausedMS += pauseForObstacle_heading();
+                    drivePID.previousError = 0;
+                    drivePID.previousTime = drivePID.PIDtimer.time(msec);
+                }
+            }
             if (!leftOn || !rightOn)
             {
                 motors.stop(brake);
 
-                // On the clockwise perimeter the outside edge is on the left.
+                // On the clockwise perimeter the outside edge is on the left
                 if (perimeter && !leftOn && rightOn)
                 {
                     if (++sideCorrections > 4)
@@ -760,7 +790,7 @@ struct robot
                     if (cleaningFailed)
                         return;
 
-                    // If the pivot restores both sensors, move a little inward.
+                    // If the pivot restores both sensors, move a little inward
                     if (DISTANCE.isObjectDetected() && DISTANCE.objectDistance(mm) < 100 &&
                         OPTICAL.isNearObject())
                     {
@@ -817,7 +847,7 @@ struct robot
     // Params: side = -1 left side down, 0 level (both sides up), +1 right side down
     // Setup: at the start the user lowers the collector onto its RIGHT side and
     //        COLLECTOR.resetPosition() is called, so 0 deg = right down,
-    //        -8.25 deg = level, -16.5 deg = left down
+    //        -8.25 deg = level, -16.5 deg = left down (measured range is +-9.5 deg from level)
     // Outputs: true if it got there (going down, touching the table early counts)
     bool setCollector(int side)
     {
@@ -946,7 +976,7 @@ struct robot
         rows = (int)ceil(widthMM / MAX_STEP_MM) + 1; // Add a row to eliminate dead zone
         stepMM = widthMM / (rows - 1);
 
-        // Keep the original row loop. Each row follows one of two fixed headings.
+        // Keep the original row loop, Each row follows one of two fixed headings
         float shiftedMM = 0;
         bool finished = false;
         for (int row = 0; row < rows; ++row)
@@ -974,6 +1004,32 @@ struct robot
             }
         }
 
+        // Fixing "Dead zone"
+        //  Move to the side edge, back up for turning clearance, then clean one final pass opposite the previous row
+        turn_heading(headingError(edgeHeading + 270));
+        if (cleaningFailed)
+            return;
+
+        // Keep running until hit the edge
+        drivingHeading(edgeHeading + 270, 0, false);
+        if (cleaningFailed)
+            return;
+
+        // leave room for turning
+        if (!driveDistance(-BACK_MM, 15))
+            return;
+        // the direction is opposite to the previous row
+        const float extraHeading = edgeHeading + 180 + (rows % 2) * 180;
+        turn_heading(headingError(extraHeading));
+        if (cleaningFailed)
+            return;
+
+        drivingHeading(extraHeading, lengthMM + BACK_MM, false);
+        if (cleaningFailed)
+            return;
+
+        if (!driveDistance(-BACK_MM, 15))
+            return;
         motors.stop(brake);
         Brain.Screen.clearScreen();
         Brain.Screen.setCursor(1, 1);
@@ -1005,7 +1061,7 @@ struct robot
     void Manual_Control()
     {
         motors.stop(brake);
-        COLLECTOR.resetPosition();
+
         bool running = setCollector(0);
         int collectorState = 0;
 
@@ -1090,19 +1146,20 @@ struct robot
         timer moveTimer;
         moveTimer.reset();
 
-        //RICHARD LOOK HERE
+        // RICHARD LOOK HERE
         float pauseMS = 0;
+        collisionMonitor.reset();
 
         while (travelled < targetDegree &&
-               moveTimer.time(msec) - pausedMS < timeoutMS) //ADD COLLISION DETECTION HERE
+               moveTimer.time(msec) - pausedMS < timeoutMS) // ADD COLLISION DETECTION HERE
         {
-            if (BUMPER.pressing())
+            if (BUMPER.pressing() || collisionMonitor.detectCollisionLin())
             {
                 pausedMS += pauseForObstacle();
                 drivePID.previousError = 0;
                 drivePID.previousTime = drivePID.PIDtimer.time(msec);
             }
-            
+
             if (direction == forward &&
                 (!DISTANCE.isObjectDetected() || DISTANCE.objectDistance(mm) >= 100 ||
                  !OPTICAL.isNearObject()))
@@ -1137,8 +1194,66 @@ struct robot
         }
         return travelled >= targetDegree;
     }
-    float pauseForObstacle_heading()
+
+    //Waits for obstacle to be removed
+    void waitForTouchResume()
     {
+        bool pause = true;
+        timer feedbackTimer;
+        feedbackTimer.reset();
+
+        while (pause)
+        {
+            // If bumper is still pressing, wait for it to be released
+            if (BUMPER.pressing())
+            {
+                wait(10, msec);
+                // Beep a sound, flash red light every 500ms to indicate that the robot is paused
+                if (feedbackTimer.time(msec) > 500)
+                {
+                    TOUCHLED.setColor(color::red);
+                    Brain.playNote(6, 9, 250);
+                    wait(50, msec);
+                    TOUCHLED.off();
+                    feedbackTimer.reset();
+                }
+            }
+            else
+            {
+                // If touch is pressed, wait for it to be released
+                if (TOUCHLED.pressing())
+                {
+                    wait(10, msec);
+                    // wait for touch to be released
+                    while (TOUCHLED.pressing())
+                    {
+                        wait(10, msec);
+                    }
+                    // unpause
+                    pause = false;
+                }
+                // TouchLED is not pressed yet
+                else
+                {
+                    // Beep a sound, flash red light every 500ms to indicate that the robot is paused
+                    if (feedbackTimer.time(msec) > 500)
+                    {
+                        TOUCHLED.setColor(color::red);
+                        Brain.playNote(6, 9, 250);
+                        wait(50, msec);
+                        TOUCHLED.off();
+                        feedbackTimer.reset();
+                    }
+                }
+            }
+        }
+    }
+
+    float pauseForObstacle_heading() // For straight driving
+    {
+        if (!collisionMonitor.detectCollisionLin())
+            return 0;
+
         motors.stop(brake);
         timer pauseTimer;
         pauseTimer.reset();
@@ -1146,31 +1261,16 @@ struct robot
         Brain.Screen.clearScreen();
         Brain.Screen.setCursor(1, 1);
         Brain.Screen.print("Remove obstacle");
-        Brain.Screen.setCursor(2, 1);
+        Brain.Screen.setCursor(3, 1);
         Brain.Screen.print("Then tap Touch");
 
-        // Require the obstacle to be removed, then a NEW Touch press and release.
-        bool pause = true;
-        while (pause)
-        {
-            while (BUMPER.pressing() || TOUCHLED.pressing())  
-                wait(20, msec);
-            while (!TOUCHLED.pressing() && !BUMPER.pressing())
-                wait(20, msec);
-            if (BUMPER.pressing())
-                continue;
-            while (TOUCHLED.pressing() && !BUMPER.pressing())
-                wait(20, msec);
-            if (!BUMPER.pressing()){
-                collisionMonitor.collisionCount = 0;
-                collisionMonitor.collisionDetected = false;
-                pause = false;
-            }
-        }
+        waitForTouchResume();
 
+        Brain.Screen.clearScreen();
         TOUCHLED.setColor(color::green);
         return pauseTimer.time(msec);
     }
+
     float pauseForObstacle()
     {
         if (!BUMPER.pressing())
@@ -1183,26 +1283,12 @@ struct robot
         Brain.Screen.clearScreen();
         Brain.Screen.setCursor(1, 1);
         Brain.Screen.print("Remove obstacle");
-        Brain.Screen.setCursor(2, 1);
+        Brain.Screen.setCursor(3, 1);
         Brain.Screen.print("Then tap Touch");
 
-        // Require the obstacle to be removed, then a NEW Touch press and release.
-        bool pause = true;
-        while (pause)
-        {
-            while (BUMPER.pressing() || TOUCHLED.pressing())  
-                wait(20, msec);
-            while (!TOUCHLED.pressing() && !BUMPER.pressing())
-                wait(20, msec);
-            if (BUMPER.pressing())
-                continue;
-            while (TOUCHLED.pressing() && !BUMPER.pressing())
-                wait(20, msec);
-            if (!BUMPER.pressing()){
-                pause = false;
-            }
-        }
+        waitForTouchResume();
 
+        Brain.Screen.clearScreen();
         TOUCHLED.setColor(color::green);
         return pauseTimer.time(msec);
     }
@@ -1213,7 +1299,7 @@ struct robot
         const float SPOKE_CLEARANCE_MM = 35.0f;
         const float SPEED_PERCENT = 40.0f;
         const float RIM_START_TURN_DEG = 90.0f; // Right turn after reaching the rim after spoke cleaning
-        const float RIM_SPEED_PERCENT = 30.0f;
+        const float RIM_SPEED_PERCENT = 12.0f;
         const float RIM_SLOWDOWN_PERCENT = 15.0f;
         const int RIM_TIMEOUT_MS = 240000;
         const float PI = 3.14159265f;
@@ -1238,12 +1324,12 @@ struct robot
         COLLECTOR.resetPosition();
         if (!setCollector(0))
             return;
-        wait(300, msec);
+        wait(200, msec);
         calibrateSensors();
         TOUCHLED.setColor(color::green);
         BRUSH.spin(reverse, 50, percent);
 
-        // Face the first rim. The alignment function backs up by BACK_MM
+        // Face the first rim, The alignment function backs up by BACK_MM
         drivingHeading();
         if (cleaningFailed)
             return;
@@ -1254,10 +1340,9 @@ struct robot
         float nearBackoffMM = BACK_MM;
         float measuredRadiusMM = 0.0f;
         float outwardHeading = 0.0f;
-    
-        for (int crossing = 0; crossing <1; ++crossing)
-        {
 
+        for (int crossing = 0; crossing < 1; ++crossing)
+        {
             turn_heading(180.0f);
             if (cleaningFailed || !setCollector(0))
                 return;
@@ -1267,7 +1352,7 @@ struct robot
             if (cleaningFailed)
                 return;
 
-            // Start was one backoff inside the rim. Add that distance to the span
+            // Start was one backoff inside the rim, Add that distance to the span
             const float spanMM = driveEncoderMM() - startMM;
             measuredRadiusMM = (spanMM) / 2.0f;
             if (measuredRadiusMM <= BACK_MM)
@@ -1275,8 +1360,8 @@ struct robot
                 stopCleaning("Invalid circular span");
                 return;
             }
-            // The robot is at the far edge. Reverse half the measured span
-            if (!driveDistance(-measuredRadiusMM-60, SPEED_PERCENT))
+            // robot  at the far edge, reverse half the measured span
+            if (!driveDistance(-measuredRadiusMM - 60, SPEED_PERCENT))
                 return;
             if (!DISTANCE.isObjectDetected() || DISTANCE.objectDistance(mm) >= 100 ||
                 !OPTICAL.isNearObject())
@@ -1288,7 +1373,7 @@ struct robot
 
         // Use the compensated radius for spacing and the measured radius for driving
         const float tableRadiusMM = measuredRadiusMM + RADIUS_COMPENSATION_MM;
-        const float spokeLengthMM = measuredRadiusMM - SPOKE_CLEARANCE_MM;//deleted BACK_MM
+        const float spokeLengthMM = measuredRadiusMM - SPOKE_CLEARANCE_MM; // deleted BACK_MM
         if (!isfinite(tableRadiusMM) || tableRadiusMM <= 0.0f || spokeLengthMM <= 0.0f)
         {
             stopCleaning("Invalid circular span");
@@ -1406,7 +1491,7 @@ struct robot
         Brain.Screen.print("Spokes %d + rim", spokeCount);
     }
 
-    // Allow users to select cleaning mode
+    // Allow users to select cleaning mode at the start
     static int cleaningSelection()
     {
         // 1 for rectangle, 2 for circle, 3 for manual
@@ -1417,45 +1502,41 @@ struct robot
             // find the right display
             if (selection == 1)
             {
-                
+
                 Brain.Screen.setCursor(1, 1);
                 Brain.Screen.print("Selection:");
-                Brain.Screen.setCursor(2, 1);
-                Brain.Screen.print("-Rectangle-");
                 Brain.Screen.setCursor(3, 1);
-                Brain.Screen.print("> Circle");
+                Brain.Screen.print("-Rectangle-");
                 Brain.Screen.setCursor(5, 2);
                 Brain.Screen.print("Tap LED to select");
             }
             else if (selection == 2)
             {
-                
+
                 Brain.Screen.setCursor(1, 1);
                 Brain.Screen.print("Selection:");
-                Brain.Screen.setCursor(2, 1);
-                Brain.Screen.print("-Circle-");
                 Brain.Screen.setCursor(3, 1);
-                Brain.Screen.print("> Manual");
+                Brain.Screen.print("-Circle-");
                 Brain.Screen.setCursor(5, 2);
                 Brain.Screen.print("Tap LED to select");
             }
             else if (selection == 3)
             {
-                
+
                 Brain.Screen.setCursor(1, 1);
                 Brain.Screen.print("Selection:");
-                Brain.Screen.setCursor(2, 1);
-                Brain.Screen.print("-Manual-");
                 Brain.Screen.setCursor(3, 1);
-                Brain.Screen.print("> Rectangle");
+                Brain.Screen.print("-Manual-");
                 Brain.Screen.setCursor(5, 2);
                 Brain.Screen.print("Tap LED to select");
             }
 
+            // Switch to different selection based on button presses
             if (Brain.buttonRight.pressing())
             {
                 Brain.Screen.clearScreen();
                 selection++;
+                // loop back
                 if (selection > 3)
                 {
                     selection = 1;
@@ -1467,6 +1548,7 @@ struct robot
             {
                 Brain.Screen.clearScreen();
                 selection--;
+                // loop back
                 if (selection < 1)
                 {
                     selection = 3;
@@ -1475,8 +1557,11 @@ struct robot
             }
 
         } while (!TOUCHLED.pressing());
+
         // wait for release
         TOUCHLED.setColor(color::red);
+
+        // ensure person releases TOUCHLED
         while (TOUCHLED.pressing())
         {
             wait(10, msec);
@@ -1484,6 +1569,7 @@ struct robot
         return selection;
     }
 };
+
 /*
 // Test functions----------------------------------------------------------------------------------
 void testPIDTurning()
@@ -1506,41 +1592,13 @@ void test_find_absolute_heading()
     find_absolute_heading();
 }
 
-// Event functions
-void endAutonomous(bool &end_autonomous)
-{
-    end_autonomous = true;
-    TOUCHLED.setColor(color::red);
-    motors.stop(brake);
-    Brain.Screen.clearScreen();
-    Brain.Screen.setCursor(1, 1);
-    Brain.Screen.print("End Auto");
-}
-
-// Button functions
-void handle_TOUCLED(bool &end_autonomous, color &TOUCLED_COLOR)
-{
-    if (TOUCLED_COLOR == color::red)
-    {
-        endAutonomous(end_autonomous);
-    }
-}
 */
 // -------------------------------------- MAIN ---------------------------------------------------
-// int main()
-// {
-//     //Declare robot object
-//     robot SweepBot;
-//     SweepBot.automaticCleaning();
-//     return 0;
-// }
-
-// NEW int main
 
 int main()
 {
     robot SweepBot;
-
+    TOUCHLED.setColor(color::white);
     int selection = 0;
     // Get use to select the cleaning mode
     selection = robot::cleaningSelection();
@@ -1549,14 +1607,12 @@ int main()
         TOUCHLED.setColor(color::green);
         TOUCHLED.setColor(color::yellow);
         SweepBot.automaticCleaning();
-        Brain.programStop();
     }
     else if (selection == 2)
     {
         TOUCHLED.setColor(color::green);
         TOUCHLED.setColor(color::yellow);
         SweepBot.circle_algo();
-        Brain.programStop();
     }
     else if (selection == 3)
     {
@@ -1564,6 +1620,6 @@ int main()
         TOUCHLED.setColor(color::yellow);
         SweepBot.Manual_Control();
     }
-
+    Brain.programStop();
     return 0;
 }

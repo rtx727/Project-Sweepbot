@@ -32,43 +32,30 @@ Program Task Assignments:
 - Richard: Manual Controller program, v-shape collector program
 - Yunhao: ~~PID controller~~, ~~first edge detection algorithim~~, ~~collision detection using accelerometer~~
 
-Weekend 1 tasks(Design+Selection):
+Weekend 1 tasks:
 -~~Solve lack of friction problem~~
 -~~Begin collision detection code~~
 -~~Get first trial in: ->Use find absolute heading and a loop to travel down the table to wipe all of it.~~
-**DO NOT DELAY THIS. ABSOLUTELY CRITICAL TO START FINDING ISSUES.
-- Think of how to incorporate functions together into a program
-- Clean up code on spare time
+DO NOT DELAY THIS. ABSOLUTELY CRITICAL TO START FINDING ISSUES.
+-Think of how to incorporate functions together into a program
+-Clean up code on spare time
 
-Week 2 (Prototyping):
-- Integrate algorithim
-- Formal presentation preparation, presentation
-- Look into slowing down turns
-- Cleaning up code
-- See collector collect things
-- Make robot object --> check compounded error in heading
+Week 2:
+-Integrate algorithim
+-Formal presentation preparation, presentation
+-Look into slowing down turns
+-Cleaning up code
+-See collector collect things
+-Make robot object --> check compounded error in heading
 
 Collision logic:
-- Find unexpected high jerk for multiple loops. This implies a collision. 
-- A collision monitor object is created in int main which needs to be passed into all movement functions.
-- In checking loops of the movement functions, the object's method of calculating jerk is called.
-**The function will be changed from void to bool such that it returns the boolean of whether a 
+-Find unexpected high jerk for multiple loops. This implies a collision. 
+-A collision monitor object is created in int main which needs to be passed into all movement functions.
+-In checking loops of the movement functions, the object's method of calculating jerk is called.
+The function will be changed from void to bool such that it returns the boolean of whether a 
 collision has been detected.
 
 
 Edge detection logic:
-- Get two sensors to fall of table at exact same time to get absolute heading
-- perform this calibration multiple times throughout the cleaning process
-
-Week 3(Validation and reiteration):
-- Feedback received
-- Proceed to add mechanical brush and dust pan
-- implementing stretch goals including circular table algorithm
-- Final tuning and case studies on different circumstances
-- Determine what was the limiting factor of the robot
-
-Week 4(Reiterate)
-- Evaluate feasibility of adding extra stretch goals
-- Finalize symposium scheduled tasks
-- Prepare documentation (e.g. Post Mortem)
-
+-Get two sensors to fall of table at exact same time to get absolute heading
+-perform this calibration multiple times throughout the cleaning process
