@@ -182,6 +182,7 @@ struct PIDcontroller
     }
 };
 
+/*/
 // Struct to track robot position and heading
 struct pose
 {
@@ -200,6 +201,7 @@ struct pose
         // Destructor
     }
 };
+*/
 
 struct collisionMonitor
 {
@@ -372,7 +374,7 @@ struct collisionMonitor
 struct robot
 {
     const double MAX_SPEED = 50.0; // Maximum speed of the robot
-    pose robot_pose;
+    //pose robot_pose;
     collisionMonitor collisionMonitor;
     float absoluteHeading;
     const float BACK_MM = 100.0;          // Distance to back up when finding absolute heading
@@ -385,7 +387,7 @@ struct robot
     // Default constructor
     robot()
     {
-        robot_pose = pose();
+        // robot_pose = pose();
         absoluteHeading = 0;
         LED_color = 0;
         cleaningFailed = false;
@@ -793,7 +795,7 @@ struct robot
                     if (cleaningFailed)
                         return;
 
-                    // If the pivot restores both sensors, move a little inward.
+                    // If the pivot restores both sensors, move a little inward
                     if (DISTANCE.isObjectDetected() && DISTANCE.objectDistance(mm) < 100 &&
                         OPTICAL.isNearObject())
                     {
@@ -808,7 +810,7 @@ struct robot
                         continue;
                     }
 
-                    // A front corner can also trigger the left sensor first.
+                    // A front corner can also trigger the left sensor first
                     turn_heading(headingError(targetHeading));
                     if (cleaningFailed)
                         return;
@@ -979,7 +981,7 @@ struct robot
         rows = (int)ceil(widthMM / MAX_STEP_MM) + 1; // Add a row to eliminate dead zone
         stepMM = widthMM / (rows - 1);
 
-        // Keep the original row loop. Each row follows one of two fixed headings.
+        // Keep the original row loop, Each row follows one of two fixed headings
         float shiftedMM = 0;
         bool finished = false;
         for (int row = 0; row < rows; ++row)
@@ -1281,7 +1283,7 @@ struct robot
         TOUCHLED.setColor(color::green);
         BRUSH.spin(reverse, 50, percent);
 
-        // Face the first rim. The alignment function backs up by BACK_MM
+        // Face the first rim The alignment function backs up by BACK_MM
         drivingHeading();
         if (cleaningFailed)
             return;
@@ -1305,7 +1307,7 @@ struct robot
             if (cleaningFailed)
                 return;
 
-            // Start was one backoff inside the rim. Add that distance to the span
+            //
             const float spanMM = driveEncoderMM() - startMM;
             measuredRadiusMM = (spanMM) / 2.0f;
             if (measuredRadiusMM <= BACK_MM)
@@ -1313,7 +1315,7 @@ struct robot
                 stopCleaning("Invalid circular span");
                 return;
             }
-            // The robot is at the far edge. Reverse half the measured span
+            // 
             if (!driveDistance(-measuredRadiusMM - 60, SPEED_PERCENT))
                 return;
             if (!DISTANCE.isObjectDetected() || DISTANCE.objectDistance(mm) >= 100 ||
@@ -1341,7 +1343,7 @@ struct robot
         if (MEASURE_ONLY)
             return;
 
-        // Original pizza-slice formula. The angle from acos is in radians.
+        //
         const float width = CLEANING_WIDTH_MM;
         const float radius = tableRadiusMM;
         float cosine = 1.0f - (width * width) / (2.0f * radius * radius);
@@ -1372,7 +1374,7 @@ struct robot
                 return;
         }
 
-        // The last spoke returned to the center. Approach the rim and finish last touches
+        // 
         drivingHeading();
         if (cleaningFailed)
             return;
@@ -1544,36 +1546,8 @@ void test_find_absolute_heading()
     find_absolute_heading();
 }
 
-// Event functions
-void endAutonomous(bool &end_autonomous)
-{
-    end_autonomous = true;
-    TOUCHLED.setColor(color::red);
-    motors.stop(brake);
-    Brain.Screen.clearScreen();
-    Brain.Screen.setCursor(1, 1);
-    Brain.Screen.print("End Auto");
-}
-
-// Button functions
-void handle_TOUCLED(bool &end_autonomous, color &TOUCLED_COLOR)
-{
-    if (TOUCLED_COLOR == color::red)
-    {
-        endAutonomous(end_autonomous);
-    }
-}
 */
 // -------------------------------------- MAIN ---------------------------------------------------
-// int main()
-// {
-//     //Declare robot object
-//     robot SweepBot;
-//     SweepBot.automaticCleaning();
-//     return 0;
-// }
-
-// NEW int main
 
 int main()
 {
