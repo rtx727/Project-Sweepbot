@@ -814,7 +814,7 @@ struct robot
                     return;
                 }
                 reachedEdge = true;
-                continue; // still need testing
+                continue;
             }
             const float limitMM = expectedMM > 0 ? expectedMM + 120 : 4000;
             if (elapsedMS > 65000 || travelledMM >= limitMM)
@@ -1001,22 +1001,20 @@ struct robot
             }
         }
 
-        {
-            // 1. 转向横移方向（和正常换行的方向一样）
+        // Move to the side edge, back up for turning clearance, then clean one final pass opposite the previous row.
             turn_heading(headingError(edgeHeading + 270));
             if (cleaningFailed)
                 return;
 
-            // 2. 一直开到侧边（任一传感器离开桌面就停）
+            //Keep running until hit the edge
             drivingHeading(edgeHeading + 270, 0, false);
             if (cleaningFailed)
                 return;
 
-            // 3. 后退 BACK_MM，留出转弯空间
+            // leave room for turning
             if (!driveDistance(-BACK_MM, 15))
                 return;
-
-            // 4. 方向和上一行相反（行号 = rows，奇偶交替）
+            //the direction is opposite to the previous row
             const float extraHeading = edgeHeading + 180 + (rows % 2) * 180;
             turn_heading(headingError(extraHeading));
             if (cleaningFailed)
@@ -1028,8 +1026,6 @@ struct robot
 
             if (!driveDistance(-BACK_MM, 15))
                 return;
-        }
-        
         motors.stop(brake);
         Brain.Screen.clearScreen();
         Brain.Screen.setCursor(1, 1);
@@ -1086,13 +1082,13 @@ struct robot
             if (fabs(turnInput) < 10)
                 turnInput = 0;
 
-            // Left turn: -1, right turn: +1, straight/stopped: 0.
+            // Left turn: +1, right turn: -1, straight/stopped: 0.
             int desiredCollector = 0;
 
             if (turnInput < 0)
-                desiredCollector = -1;
-            else if (turnInput > 0)
                 desiredCollector = 1;
+            else if (turnInput > 0)
+                desiredCollector = -1;
 
             // Adjust only when the requested collector position changes.
             if (desiredCollector != collectorState)
