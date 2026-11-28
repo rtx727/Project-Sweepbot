@@ -6,6 +6,7 @@
 #include <math.h>
 #include <string.h>
 
+
 #include "vex.h"
 
 using namespace vex;
@@ -13,39 +14,42 @@ using namespace vex;
 // Brain should be defined by default
 brain Brain;
 
-// START IQ MACROS
-#define waitUntil(condition) \
-    do                       \
-    {                        \
-        wait(5, msec);       \
-    } while (!(condition))
 
-#define repeat(iterations) \
-    for (int iterator = 0; iterator < iterations; iterator++)
+// START IQ MACROS
+#define waitUntil(condition)                                                   \
+  do {                                                                         \
+    wait(5, msec);                                                             \
+  } while (!(condition))
+
+#define repeat(iterations)                                                     \
+  for (int iterator = 0; iterator < iterations; iterator++)
 // END IQ MACROS
+
 
 // Robot configuration code.
 inertial BrainInertial = inertial();
 
+
 // generating and setting random seed
-void initializeRandomSeed()
-{
-    wait(100, msec);
-    double xAxis = BrainInertial.acceleration(xaxis) * 1000;
-    double yAxis = BrainInertial.acceleration(yaxis) * 1000;
-    double zAxis = BrainInertial.acceleration(zaxis) * 1000;
-    // Combine these values into a single integer
-    int seed = int(
-        xAxis + yAxis + zAxis);
-    // Set the seed
-    srand(seed);
+void initializeRandomSeed(){
+  wait(100,msec);
+  double xAxis = BrainInertial.acceleration(xaxis) * 1000;
+  double yAxis = BrainInertial.acceleration(yaxis) * 1000;
+  double zAxis = BrainInertial.acceleration(zaxis) * 1000;
+  // Combine these values into a single integer
+  int seed = int(
+    xAxis + yAxis + zAxis
+  );
+  // Set the seed
+  srand(seed); 
 }
 
-void vexcodeInit()
-{
 
-    // Initializing random seed.
-    initializeRandomSeed();
+
+void vexcodeInit() {
+
+  // Initializing random seed.
+  initializeRandomSeed(); 
 }
 
 #pragma endregion VEXcode Generated Robot Configuration
@@ -260,7 +264,7 @@ struct collisionMonitor
 
     bool detectCollisionLin()
     {
-        const float JERK_THRESHOLD = 13.0; // Collision threshold in m/s^3
+        const float JERK_THRESHOLD = 10.0; // Collision threshold in m/s^3
         const float COUNT_WINDOW_S = 0.15f;
         const float FLAG_HOLD_S = 0.5f;
 
@@ -1212,7 +1216,7 @@ struct robot
                 if (feedbackTimer.time(msec) > 500)
                 {
                     TOUCHLED.setColor(color::red);
-                    Brain.playNote(6, 9, 250);
+                    Brain.playSound(alarm);
                     wait(50, msec);
                     TOUCHLED.off();
                     feedbackTimer.reset();
@@ -1239,7 +1243,7 @@ struct robot
                     if (feedbackTimer.time(msec) > 500)
                     {
                         TOUCHLED.setColor(color::red);
-                        Brain.playNote(6, 9, 250);
+                        Brain.playSound(alarm);
                         wait(50, msec);
                         TOUCHLED.off();
                         feedbackTimer.reset();
@@ -1496,9 +1500,15 @@ struct robot
     {
         // 1 for rectangle, 2 for circle, 3 for manual
         int selection = 1;
-
+        int hue = 0;
         do
-        {
+        {    
+            TOUCHLED.setColor(hue);
+            color rainbow;
+            rainbow.hsv(hue, 1.0, 1.0); // hue, saturation, value
+            TOUCHLED.setColor(rainbow);
+            hue = (hue + 5) % 360;
+            wait(50, msec);
             // find the right display
             if (selection == 1)
             {
